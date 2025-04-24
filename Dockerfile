@@ -27,4 +27,5 @@ RUN pnpm run build
 EXPOSE 3000
 
 # Adicione a entrada ao arquivo /etc/hosts e inicie a aplicação
-CMD ["pnpm", "run", "server:prod"]
+CMD ["pnpm", "run", "start"]
+#CMD ["pnpm", "run", "server:prod"]
