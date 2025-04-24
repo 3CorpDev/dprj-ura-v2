@@ -1,0 +1,17 @@
+# Instalar Composer
+curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php
+php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+chmod +x /usr/local/bin/composer
+
+# Instalar dependência MongoDB para PHP
+composer require mongodb/mongodb
+
+# Instalar extensão MongoDB
+pecl install mongodb
+
+# Habilitar extensão MongoDB no PHP
+echo "extension=mongodb.so" > /etc/php/8.2/apache2/conf.d/30-mongodb.ini
+echo "extension=mongodb.so" > /etc/php/8.2/cli/conf.d/30-mongodb.ini
+
+# Reiniciar Apache
+systemctl restart apache2
