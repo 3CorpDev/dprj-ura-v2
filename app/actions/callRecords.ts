@@ -3,8 +3,26 @@
 import { adjustToGMTMinus3 } from '@/lib/utils';
 import { MongoClient } from 'mongodb';
 
-const uri = process.env.MONGODB_URI!;
-const client = new MongoClient(uri);
+const uri = process.env.MONGODB_URI;
+
+let _client: MongoClient | null = null;
+function ensureClient() {
+  if (!_client) {
+    if (!uri) throw new Error('MONGODB_URI is not defined');
+    _client = new MongoClient(uri);
+  }
+  return _client;
+}
+
+const client = new Proxy({}, {
+  get(_t, prop) {
+    const real = ensureClient();
+    // @ts-ignore
+    const v = real[prop as keyof MongoClient];
+    return typeof v === 'function' ? (v as Function).bind(real) : v;
+  }
+}) as unknown as MongoClient;
+// ...existing code above remains unchanged (module header)
 const DB_NAME = 'ura_dprj';
 const COLLECTION_NAME = 'records';
 

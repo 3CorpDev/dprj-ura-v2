@@ -128,6 +128,18 @@ export default function Header({ dataCall, dataLoginVerde, queuesInPaused }: { d
                                 </div>
                                 <Button size="sm" onClick={handleLogout} className="w-full mt-1 bg-white/20 hover:bg-white/30 transition-colors">Logout</Button>
                             </div>
+                            <div className="flex flex-col items-start">
+                                <p className="text-xs opacity-90" title="Quantidade de Chamadas Atendidas">QCA: {dataLoginVerde.ramal}</p>
+                                <p className="text-xs opacity-90" title="Quantidade de Pausas e Bloqueios">QPB: {dataLoginVerde.ramal}</p>
+                                <p className="text-xs opacity-90" title="Tempo Total Logado">TTL: {dataLoginVerde.ramal}</p>                               
+                                <Button size="sm" className="w-full mt-1 bg-white/20 hover:bg-white/30 transition-colors visible-hidden"></Button>
+                            </div>
+                            <div className="flex flex-col items-start">
+                                <p className="text-xs opacity-90" title="Temo Médio de Atendimento">TMA: {dataLoginVerde.ramal}</p>
+                                <p className="text-xs opacity-90" title="Quantidade Médio de Bloqueio">TMB: {dataLoginVerde.ramal}</p>
+                                <p className="text-xs opacity-90" title="Tempo Médio de Bloqueio">&nbsp;</p>                               
+                                <Button size="sm" className="w-full mt-1 bg-white/20 hover:bg-white/30 transition-colors visible-hidden"></Button>
+                            </div>
                             {pausedQueues.length > 0 && (
                                 <>
                                     <Separator orientation="vertical" className="h-14 bg-white/40" />
