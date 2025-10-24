@@ -38,9 +38,7 @@ export default function Tabs() {
       </div>
 
       {/* Conteúdo das Abas */}
-      <div className="p-6">
         {tabs[activeTab].component}
-      </div>
     </div>
   );
 }

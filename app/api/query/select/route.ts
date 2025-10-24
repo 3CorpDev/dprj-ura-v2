@@ -30,7 +30,7 @@ function normalizeRow(row: any, aliasMap: Record<string, string>): Record<string
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { tabela, campos, where, whereType, orderby, limit, offset } = body;
+    const { tabela, campos, where, whereType, orderby, groupBy, limit, offset } = body;
 
     if (!tabela) {
       return NextResponse.json({ success: false, message: 'Tabela não informada!' }, { status: 400 });
@@ -77,6 +77,11 @@ export async function POST(req: NextRequest) {
       countQuery += whereSQL;
     }
 
+    // Adicionar GROUP BY se especificado
+    if (groupBy) {
+      query += ` GROUP BY ${groupBy}`;
+    }
+
     if (orderby?.campo && orderby?.direcao) {
       query += ` ORDER BY ${orderby.campo} ${orderby.direcao}`;
     }
@@ -91,15 +96,25 @@ export async function POST(req: NextRequest) {
       queryParams.push(offset);
     }
 
+    console.log('🔍 Query SQL:', query);
+    console.log('🔍 Parâmetros:', queryParams);
+
     const conn = await pool.getConnection();
     const result = await conn.query(query, queryParams);
-    const countResult = await conn.query(countQuery, countParams);
+    
+    // Para consultas com GROUP BY, não fazemos count separado
+    let total = result.length;
+    if (!groupBy) {
+      const countResult = await conn.query(countQuery, countParams);
+      const totalRaw = countResult[0]?.total || 0;
+      total = typeof totalRaw === 'bigint' ? Number(totalRaw) : totalRaw;
+    }
+    
     conn.release();
 
-    const totalRaw = countResult[0]?.total || 0;
-    const total = typeof totalRaw === 'bigint' ? Number(totalRaw) : totalRaw;
-
     const dataComAlias = result.map((row: any) => normalizeRow(row, aliasMap));
+
+    console.log('✅ Resultado processado:', { total, registros: dataComAlias.length });
 
     return NextResponse.json({
       success: true,
@@ -108,7 +123,8 @@ export async function POST(req: NextRequest) {
       data: dataComAlias,
     });
   } catch (err: any) {
-    console.error('Erro ao executar consulta:', err.message);
+    console.error('❌ Erro ao executar consulta:', err.message);
+    console.error('🔍 Stack trace:', err.stack);
     return NextResponse.json({
       success: false,
       message: 'Erro ao recuperar dados!',
