@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import PageDash from './dash';
 import PageRel from './report';
+import PageTurnover from './turnover';
 
 export default function Tabs() {
   const [activeTab, setActiveTab] = useState(0);
@@ -15,6 +16,10 @@ export default function Tabs() {
     {
       title: "Relatórios",
       component: <PageRel />
+    },
+    {
+      title: "Turnover",
+      component: <PageTurnover />
     }
   ];
 

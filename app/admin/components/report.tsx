@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-type ReportType = 'consolidado' | 'tempo_medio_atendimento_por_grupo' | 'total_chamadas_atendidas_passou_fila' | 'chamadas_atendidas_menos_1_minuto' | 'chamadas_abandonadas_fila_menos_1_minuto';
+type ReportType = 'consolidado' | 'tempo_medio_atendimento_por_grupo' | 'total_chamadas_atendidas_passou_fila' | 'chamadas_atendidas_menos_1_minuto' | 'chamadas_abandonadas_fila_menos_1_minuto' | 'absenteismo';
 
 interface ReportData {
   [key: string]: any;
@@ -20,12 +20,13 @@ export default function Report() {
 
   const reportOptions = [
     { value: '', label: 'Selecione um relatório' },
-    { value: 'consolidado', label: 'Relatório Consolidado CDR' },
-    { value: 'tempo_medio_atendimento_por_grupo', label: 'Tempo Médio de Atendimento por Grupo' },
-    { value: 'total_chamadas_atendidas_passou_fila', label: 'Total de Chamadas que Passaram pela Fila' },
+    { value: 'absenteismo', label: 'Absenteísmo' },
     { value: 'chamadas_atendidas_menos_1_minuto', label: 'Chamadas Atendidas Inferiores a 1 Minuto' },
     { value: 'chamadas_abandonadas_fila_menos_1_minuto', label: 'Chamadas Abandonadas na Fila Inferior a 1 Minuto' },
     { value: 'chamadas_abandonadas_fila_mais_1_minuto', label: 'Chamadas Abandonadas na Fila Superior a 1 Minuto' },
+    { value: 'consolidado', label: 'Relatório Consolidado CDR' },
+    { value: 'tempo_medio_atendimento_por_grupo', label: 'Tempo Médio de Atendimento por Grupo' },
+    { value: 'total_chamadas_atendidas_passou_fila', label: 'Total de Chamadas que Passaram pela Fila' },
     { value: 'total_repeticoes_chamadores', label: 'Total de Repetições por Chamador' }
   ];
 
@@ -74,32 +75,42 @@ export default function Report() {
   };
 
   const fetchReportData = async () => {
-    if (!selectedReport || !startDate) return;
+    if (!selectedReport || (!startDate && selectedReport !== 'absenteismo')) return;
 
     console.log(`🚀 [${selectedReport}] Iniciando busca de dados...`);
-    console.log(`🌏 [${selectedReport}] ATENÇÃO: Servidor na China (GMT+8) - enviando datas como strings para evitar conversão automática`);
     
-    // Formatar datas para garantir consistência
-    const formattedStartDate = formatDateForServer(startDate);
-    const formattedEndDate = endDate ? formatDateForServer(endDate) : '';
-    
-    console.log(`📅 [${selectedReport}] Data inicial original:`, startDate, '→ formatada:', formattedStartDate);
-    console.log(`📅 [${selectedReport}] Data final original:`, endDate || 'não definida', '→ formatada:', formattedEndDate || 'não definida');
     setLoading(true);
     
     try {
-      // Usar endpoints específicos para todos os relatórios
-      const params = new URLSearchParams({
-        startDate: formattedStartDate,
-        sortOrder
-      });
+      let apiUrl;
       
-      if (formattedEndDate) {
-        params.append('endDate', formattedEndDate);
-      }
+      if (selectedReport === 'absenteismo') {
+        // Relatório de absenteísmo não precisa de filtros de data
+        apiUrl = `/api/reports/${selectedReport}`;
+        console.log(`🌐 [${selectedReport}] URL da requisição (sem filtros):`, apiUrl);
+      } else {
+        // Outros relatórios precisam de filtros de data
+        console.log(`🌏 [${selectedReport}] ATENÇÃO: Servidor na China (GMT+8) - enviando datas como strings para evitar conversão automática`);
+        
+        // Formatar datas para garantir consistência
+        const formattedStartDate = formatDateForServer(startDate);
+        const formattedEndDate = endDate ? formatDateForServer(endDate) : '';
+        
+        console.log(`📅 [${selectedReport}] Data inicial original:`, startDate, '→ formatada:', formattedStartDate);
+        console.log(`📅 [${selectedReport}] Data final original:`, endDate || 'não definida', '→ formatada:', formattedEndDate || 'não definida');
+        
+        const params = new URLSearchParams({
+          startDate: formattedStartDate,
+          sortOrder
+        });
+        
+        if (formattedEndDate) {
+          params.append('endDate', formattedEndDate);
+        }
 
-      const apiUrl = `/api/reports/${selectedReport}?${params}`;
-      console.log(`🌐 [${selectedReport}] URL da requisição:`, apiUrl);
+        apiUrl = `/api/reports/${selectedReport}?${params}`;
+        console.log(`🌐 [${selectedReport}] URL da requisição:`, apiUrl);
+      }
 
       const response = await fetch(apiUrl);
       
@@ -128,7 +139,7 @@ export default function Report() {
   };
 
   useEffect(() => {
-    if (selectedReport && startDate) {
+    if (selectedReport && (startDate || selectedReport === 'absenteismo')) {
       fetchReportData();
     }
   }, [selectedReport, startDate, endDate, sortOrder]);
@@ -226,129 +237,132 @@ export default function Report() {
               </h2>
             </div>
             
-            <div className="bg-gray-50 rounded-lg p-4 border">
-              <div className="flex items-center gap-6 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-bold text-gray-700 whitespace-nowrap">
-                    De:
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={startDate ? formatDateForDisplay(startDate) : ''}
-                      placeholder="dd/mm/aaaa"
-                      onChange={(e) => {
-                        let value = e.target.value.replace(/\D/g, '');
-                        if (value.length >= 2) value = value.substring(0,2) + '/' + value.substring(2);
-                        if (value.length >= 5) value = value.substring(0,5) + '/' + value.substring(5);
-                        if (value.length > 10) value = value.substring(0,10);
-                        
-                        // Converter para formato ISO quando completo
-                        if (value.length === 10) {
-                          const [day, month, year] = value.split('/');
-                          if (day && month && year && day.length === 2 && month.length === 2 && year.length === 4) {
-                            const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-                            if (date.getDate() == parseInt(day) && date.getMonth() == parseInt(month) - 1) {
-                              setStartDate(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+            {/* Ocultar filtros para relatório de absenteísmo */}
+            {selectedReport !== 'absenteismo' && (
+              <div className="bg-gray-50 rounded-lg p-4 border">
+                <div className="flex items-center gap-6 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-bold text-gray-700 whitespace-nowrap">
+                      De:
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={startDate ? formatDateForDisplay(startDate) : ''}
+                        placeholder="dd/mm/aaaa"
+                        onChange={(e) => {
+                          let value = e.target.value.replace(/\D/g, '');
+                          if (value.length >= 2) value = value.substring(0,2) + '/' + value.substring(2);
+                          if (value.length >= 5) value = value.substring(0,5) + '/' + value.substring(5);
+                          if (value.length > 10) value = value.substring(0,10);
+                          
+                          // Converter para formato ISO quando completo
+                          if (value.length === 10) {
+                            const [day, month, year] = value.split('/');
+                            if (day && month && year && day.length === 2 && month.length === 2 && year.length === 4) {
+                              const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                              if (date.getDate() == parseInt(day) && date.getMonth() == parseInt(month) - 1) {
+                                setStartDate(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+                              }
                             }
+                          } else if (value === '') {
+                            setStartDate('');
                           }
-                        } else if (value === '') {
-                          setStartDate('');
-                        }
-                      }}
-                      className="w-32 border border-gray-300 rounded-md px-2 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      maxLength={10}
-                    />
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="absolute right-1 top-1/2 transform -translate-y-1/2 w-5 h-5 opacity-0 cursor-pointer"
-                    />
-                    <svg className="absolute right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
+                        }}
+                        className="w-32 border border-gray-300 rounded-md px-2 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        maxLength={10}
+                      />
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="absolute right-1 top-1/2 transform -translate-y-1/2 w-5 h-5 opacity-0 cursor-pointer"
+                      />
+                      <svg className="absolute right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
                   </div>
-                </div>
-              
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-bold text-gray-700 whitespace-nowrap">
-                    Até:
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={endDate ? formatDateForDisplay(endDate) : ''}
-                      placeholder="dd/mm/aaaa"
-                      onChange={(e) => {
-                        let value = e.target.value.replace(/\D/g, '');
-                        if (value.length >= 2) value = value.substring(0,2) + '/' + value.substring(2);
-                        if (value.length >= 5) value = value.substring(0,5) + '/' + value.substring(5);
-                        if (value.length > 10) value = value.substring(0,10);
-                        
-                        // Converter para formato ISO quando completo
-                        if (value.length === 10) {
-                          const [day, month, year] = value.split('/');
-                          if (day && month && year && day.length === 2 && month.length === 2 && year.length === 4) {
-                            const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-                            if (date.getDate() == parseInt(day) && date.getMonth() == parseInt(month) - 1) {
-                              setEndDate(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+                
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-bold text-gray-700 whitespace-nowrap">
+                      Até:
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={endDate ? formatDateForDisplay(endDate) : ''}
+                        placeholder="dd/mm/aaaa"
+                        onChange={(e) => {
+                          let value = e.target.value.replace(/\D/g, '');
+                          if (value.length >= 2) value = value.substring(0,2) + '/' + value.substring(2);
+                          if (value.length >= 5) value = value.substring(0,5) + '/' + value.substring(5);
+                          if (value.length > 10) value = value.substring(0,10);
+                          
+                          // Converter para formato ISO quando completo
+                          if (value.length === 10) {
+                            const [day, month, year] = value.split('/');
+                            if (day && month && year && day.length === 2 && month.length === 2 && year.length === 4) {
+                              const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                              if (date.getDate() == parseInt(day) && date.getMonth() == parseInt(month) - 1) {
+                                setEndDate(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+                              }
                             }
+                          } else if (value === '') {
+                            setEndDate('');
                           }
-                        } else if (value === '') {
-                          setEndDate('');
-                        }
-                      }}
-                      className="w-32 border border-gray-300 rounded-md px-2 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      maxLength={10}
-                    />
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="absolute right-1 top-1/2 transform -translate-y-1/2 w-5 h-5 opacity-0 cursor-pointer"
-                    />
-                    <svg className="absolute right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
+                        }}
+                        className="w-32 border border-gray-300 rounded-md px-2 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        maxLength={10}
+                      />
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="absolute right-1 top-1/2 transform -translate-y-1/2 w-5 h-5 opacity-0 cursor-pointer"
+                      />
+                      <svg className="absolute right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
                   </div>
-                </div>
-              
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-bold text-gray-700 whitespace-nowrap">
-                    Ordem:
-                  </label>
-                  <select
-                    value={sortOrder}
-                    onChange={(e) => setSortOrder(e.target.value as 'ASC' | 'DESC')}
-                    className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="DESC">⬇️ Desc</option>
-                    <option value="ASC">⬆️ Asc</option>
-                  </select>
-                </div>
+                
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-bold text-gray-700 whitespace-nowrap">
+                      Ordem:
+                    </label>
+                    <select
+                      value={sortOrder}
+                      onChange={(e) => setSortOrder(e.target.value as 'ASC' | 'DESC')}
+                      className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="DESC">⬇️ Desc</option>
+                      <option value="ASC">⬆️ Asc</option>
+                    </select>
+                  </div>
 
-                <div>
-                  <button
-                    onClick={fetchReportData}
-                    disabled={!selectedReport || !startDate || loading}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white p-2 rounded-md transition-colors duration-200 flex items-center justify-center"
-                    title="Clique para Filtrar"
-                  >
-                    {loading ? (
-                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    ) : (
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                    )}
-                  </button>
+                  <div>
+                    <button
+                      onClick={fetchReportData}
+                      disabled={!selectedReport || !startDate || loading}
+                      className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white p-2 rounded-md transition-colors duration-200 flex items-center justify-center"
+                      title="Clique para Filtrar"
+                    >
+                      {loading ? (
+                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </>
         )}
       </div>
