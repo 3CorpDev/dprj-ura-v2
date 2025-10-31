@@ -23,12 +23,13 @@ export default function LoginDialog({ onLogin }: { onLogin: (loginData: LoginDat
   const { toast } = useToast()
   const [open, setOpen] = useState(false);
   const [loginData, setLoginData] = useState<LoginData>({
-    login: process.env.NODE_ENV === 'development' ? 'ufrj_supervisor' : '',
+    login: process.env.NODE_ENV === 'development' ? '30949580' : '',
     password: process.env.NODE_ENV === 'development' ? 'cpp@DPGE13' : '',
-    ramal: process.env.NODE_ENV === 'development' ? '1528' : ''
+    ramal: process.env.NODE_ENV === 'development' ? '1000' : ''
   });
 
   const handleLogin = async () => {
+    console.log(`handleLgin - Called!`);
     if (loginData.ramal.length !== 4 || isNaN(parseInt(loginData.ramal))) {
       toast({
         title: 'Erro',
@@ -39,7 +40,10 @@ export default function LoginDialog({ onLogin }: { onLogin: (loginData: LoginDat
     const stringTokenData = `${loginData.login}:${loginData.password}:toolbar:toolbaracesso`
     const base64Token = Buffer.from(stringTokenData).toString('base64')
 
-    const response = await loginVerde(base64Token, loginData)
+    const response = await loginVerde(base64Token, loginData);
+
+    console.log(`loginVerde - response: ${JSON.stringify(response)}`);
+
     if (response.sucesso) {
       localStorage.setItem('base64Token', base64Token);
       localStorage.setItem('tokenVerde', JSON.stringify({

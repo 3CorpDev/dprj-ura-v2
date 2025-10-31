@@ -5,6 +5,7 @@ export async function loginVerde(base64Token: string, loginData: any) {
     console.log('===== LOGIN DATA =====')
     try {
         const baseUrl = process.env.NODE_ENV === 'development' ? 'https://desenvolvimento2.verde.rj.def.br/api/verde/usuario/login' : 'https://verde.rj.def.br/api/verde/usuario/login'
+        //const baseUrl = 'https://verde.rj.def.br/api/verde/usuario/login';
         const response = await fetch(baseUrl, {
             method: 'POST',
             headers: {

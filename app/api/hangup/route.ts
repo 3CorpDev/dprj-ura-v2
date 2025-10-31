@@ -2,8 +2,28 @@ import { MongoClient } from 'mongodb';
 import { NextResponse } from 'next/server';
 import AmiClient from 'asterisk-ami-client';
 
-const uri = process.env.MONGODB_URI!;
-const mongoClient = new MongoClient(uri);
+const uri = process.env.MONGODB_URI;
+
+// Lazy proxy for MongoClient: do not construct real MongoClient at module import time.
+// The real client will be created only when a property/method is accessed.
+let _mongoClient: MongoClient | null = null;
+function ensureMongoClient() {
+  if (!_mongoClient) {
+    if (!uri) throw new Error('MONGODB_URI is not defined');
+    _mongoClient = new MongoClient(uri);
+  }
+  return _mongoClient;
+}
+
+const mongoClient = new Proxy({}, {
+  get(_target, prop) {
+    const real = ensureMongoClient();
+    // forward methods/properties, binding functions to the real client
+    // @ts-ignore
+    const v = real[prop as keyof MongoClient];
+    return typeof v === 'function' ? (v as Function).bind(real) : v;
+  }
+}) as unknown as MongoClient;
 
 // Função para criar uma nova conexão AMI
 function createAmiClient() {
