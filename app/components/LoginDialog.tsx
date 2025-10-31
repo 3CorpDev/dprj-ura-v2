@@ -23,9 +23,9 @@ export default function LoginDialog({ onLogin }: { onLogin: (loginData: LoginDat
   const { toast } = useToast()
   const [open, setOpen] = useState(false);
   const [loginData, setLoginData] = useState<LoginData>({
-    login: process.env.NODE_ENV === 'development' ? 'ufrj_supervisor' : '',
+    login: process.env.NODE_ENV === 'development' ? '30949580' : '',
     password: process.env.NODE_ENV === 'development' ? 'cpp@DPGE13' : '',
-    ramal: process.env.NODE_ENV === 'development' ? '1528' : ''
+    ramal: process.env.NODE_ENV === 'development' ? '1000' : ''
   });
 
   const handleLogin = async () => {

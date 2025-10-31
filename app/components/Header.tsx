@@ -3,7 +3,7 @@ import { Phone, User, IdCard, File, FileAudio, PauseCircle, Clock } from "lucide
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useEffect, useState } from "react";
-import { getTMA } from "../actions/tma/get";
+// import { getTMA } from "../actions/tma/get";
 
 interface DataCall {
     callerNumber: string;
@@ -30,10 +30,37 @@ interface QueuePause {
     elapsedTime?: string;
 }
 
+interface TempoMedioAtendimentoData {
+    user_id: number;
+    nome_usuario: string;
+    ramal: string;
+    tempo_medio_atendimento_segundos: number;
+    total_atendimentos: number;
+    qtd_pausas_bloqueios: number;
+    total_tempo_logado: number;
+    qtd_media_bloqueio: number;
+    tempo_medio_bloqueio: number;
+}
+
 export default function Header({ dataCall, dataLoginVerde, queuesInPaused }: { dataCall: DataCall, dataLoginVerde: DataLoginVerde, queuesInPaused: QueuePause[] }) {
     const [pausedQueues, setPausedQueues] = useState<QueuePause[]>([]);
-    const [tma, setTma] = useState<number | null>(null);
-    const [tmaError, setTmaError] = useState(false);
+    // const [tma, setTma] = useState<number | null>(null);
+    // const [tmaError, setTmaError] = useState(false);
+    const [tempoMedioAtendimento, setTempoMedioAtendimento] = useState<TempoMedioAtendimentoData | null>(null);
+    const [tmaRamalError, setTmaRamalError] = useState(false);
+
+    // Variáveis derivadas para facilitar o uso dos dados
+    const tempoMedioSegundos = tempoMedioAtendimento?.tempo_medio_atendimento_segundos || 0;
+    const tempoMedioMinutos = Math.round(tempoMedioSegundos / 60);
+    const totalAtendimentos = tempoMedioAtendimento?.total_atendimentos || 0;
+    const nomeUsuario = tempoMedioAtendimento?.nome_usuario || '';
+    const userId = tempoMedioAtendimento?.user_id || 0;
+    const qtdPausasBloqueios = tempoMedioAtendimento?.qtd_pausas_bloqueios || 0;
+    const totalTempoLogado = tempoMedioAtendimento?.total_tempo_logado || 0;
+    const qtdMediaBloqueio = tempoMedioAtendimento?.qtd_media_bloqueio || 0;
+    const tempoMedioBloqueio = tempoMedioAtendimento?.tempo_medio_bloqueio || 0;
+    const totalTempoLogadoHoras = Math.round(totalTempoLogado / 3600); // Converte para horas
+    const tempoMedioBloqueioMinutos = Math.round(tempoMedioBloqueio / 60); // Converte para minutos
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -69,32 +96,99 @@ export default function Header({ dataCall, dataLoginVerde, queuesInPaused }: { d
         window.location.reload();
     }
 
+    // Função para calcular os últimos 30 dias
+    const getLast30Days = () => {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(endDate.getDate() - 30);
+        
+        const formatDate = (date: Date) => {
+            return date.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+        };
+        
+        return {
+            startDate: formatDate(startDate),
+            endDate: formatDate(endDate)
+        };
+    };
+
+    // useEffect(() => {
+    //     const fetchTMA = async () => {
+    //         console.log("pegando tma");
+    //         if (dataLoginVerde.ramal) {
+    //             try {
+    //                 const tmaData = await getTMA(dataLoginVerde.ramal);
+    //                 if (tmaData) {
+    //                     setTma(tmaData.tma);
+    //                     setTmaError(false);
+    //                 } else {
+    //                     setTmaError(true);
+    //                 }
+    //             } catch (error) {
+    //                 console.error('Error fetching TMA:', error);
+    //                 setTmaError(true);
+    //             }
+    //         }
+    //     };
+
+    //     // Fetch TMA immediately
+    //     fetchTMA();
+
+    //     // Set up interval to fetch TMA every 10 seconds
+    //     const interval = setInterval(fetchTMA, 10000);
+
+    //     // Clean up interval on component unmount
+    //     return () => clearInterval(interval);
+    // }, [dataLoginVerde.ramal]);
+
+    // useEffect para buscar tempo médio de atendimento por ramal
     useEffect(() => {
-        const fetchTMA = async () => {
-            console.log("pegando tma");
+        const fetchTempoMedioAtendimentoPorRamal = async () => {
+            console.log("🚀 [Header] Buscando tempo médio de atendimento por ramal...");
             if (dataLoginVerde.ramal) {
                 try {
-                    const tmaData = await getTMA(dataLoginVerde.ramal);
-                    if (tmaData) {
-                        setTma(tmaData.tma);
-                        setTmaError(false);
+                    const { startDate, endDate } = getLast30Days();
+                    console.log(`📅 [Header] Período: ${startDate} a ${endDate}, Ramal: ${dataLoginVerde.ramal}`);
+                    
+                    const params = new URLSearchParams({
+                        ramal: dataLoginVerde.ramal,
+                        startDate: startDate,
+                        endDate: endDate
+                    });
+
+                    const response = await fetch(`/api/reports/tempo_medio_atendimento_por_usuario_completo?${params}`);
+                    
+                    if (!response.ok) {
+                        throw new Error(`Erro HTTP: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    console.log('✅ [Header] Dados TMA por ramal recebidos:', result);
+                    
+                    if (result.success && result.data && result.data.length > 0) {
+                        setTempoMedioAtendimento(result.data[0]); // Pega o primeiro resultado
+                        setTmaRamalError(false);
+                        console.log('📊 [Header] TMA por ramal definido:', result.data[0]);
                     } else {
-                        setTmaError(true);
+                        console.warn('⚠️ [Header] Nenhum dado encontrado para TMA por ramal');
+                        setTmaRamalError(true);
+                        setTempoMedioAtendimento(null);
                     }
                 } catch (error) {
-                    console.error('Error fetching TMA:', error);
-                    setTmaError(true);
+                    console.error('💥 [Header] Erro ao buscar TMA por ramal:', error);
+                    setTmaRamalError(true);
+                    setTempoMedioAtendimento(null);
                 }
             }
         };
 
-        // Fetch TMA immediately
-        fetchTMA();
+        // Buscar TMA por ramal imediatamente
+        fetchTempoMedioAtendimentoPorRamal();
 
-        // Set up interval to fetch TMA every 10 seconds
-        const interval = setInterval(fetchTMA, 10000);
+        // Configurar intervalo para buscar TMA por ramal a cada 5 minutos (300000ms)
+        const interval = setInterval(fetchTempoMedioAtendimentoPorRamal, 300000);
 
-        // Clean up interval on component unmount
+        // Limpar intervalo quando o componente for desmontado
         return () => clearInterval(interval);
     }, [dataLoginVerde.ramal]);
 
@@ -123,21 +217,20 @@ export default function Header({ dataCall, dataLoginVerde, queuesInPaused }: { d
                                 <p className="text-xs opacity-90">Login: {dataLoginVerde.login}</p>
                                 <p className="text-xs opacity-90">Ramal: {dataLoginVerde.ramal}</p>
                                 <div className="flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
-                                    <p className="text-xs opacity-90">TMA: {tmaError || tma === null ? '--' : `${tma} min`}</p>
+                                    <p className="text-xs opacity-90">&nbsp;</p>
                                 </div>
                                 <Button size="sm" onClick={handleLogout} className="w-full mt-1 bg-white/20 hover:bg-white/30 transition-colors">Logout</Button>
                             </div>
                             <div className="flex flex-col items-start">
-                                <p className="text-xs opacity-90" title="Quantidade de Chamadas Atendidas">QCA: {dataLoginVerde.ramal}</p>
-                                <p className="text-xs opacity-90" title="Quantidade de Pausas e Bloqueios">QPB: {dataLoginVerde.ramal}</p>
-                                <p className="text-xs opacity-90" title="Tempo Total Logado">TTL: {dataLoginVerde.ramal}</p>                               
+                                <p className="text-xs opacity-90" title="Quantidade de Chamadas Atendidas">QCA: {totalAtendimentos}</p>
+                                <p className="text-xs opacity-90" title="Quantidade de Pausas e Bloqueios">QPB: {qtdPausasBloqueios}</p>
+                                <p className="text-xs opacity-90" title="Tempo Total Logado">TTL: {totalTempoLogadoHoras}</p>                               
                                 <Button size="sm" className="w-full mt-1 bg-white/20 hover:bg-white/30 transition-colors visible-hidden"></Button>
                             </div>
                             <div className="flex flex-col items-start">
-                                <p className="text-xs opacity-90" title="Temo Médio de Atendimento">TMA: {dataLoginVerde.ramal}</p>
-                                <p className="text-xs opacity-90" title="Quantidade Médio de Bloqueio">TMB: {dataLoginVerde.ramal}</p>
-                                <p className="text-xs opacity-90" title="Tempo Médio de Bloqueio">&nbsp;</p>                               
+                                <p className="text-xs opacity-90" title="Tempo Médio de Atendimento">TMA: {tempoMedioMinutos}</p>
+                                <p className="text-xs opacity-90" title="Quantidade Média de Bloqueio">QMB: {qtdMediaBloqueio}</p>
+                                <p className="text-xs opacity-90" title="Tempo Médio de Bloqueio">TMB: {tempoMedioBloqueioMinutos}</p>                               
                                 <Button size="sm" className="w-full mt-1 bg-white/20 hover:bg-white/30 transition-colors visible-hidden"></Button>
                             </div>
                             {pausedQueues.length > 0 && (
