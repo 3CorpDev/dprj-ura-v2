@@ -66,7 +66,33 @@ export async function GET(request: Request) {
     console.log('  📊 Length:', rows?.length);
     
     // A procedure retorna um array com os resultados
-    const data = rows[0] || [];
+    let data = rows[0] || [];
+    
+    // Função para converter BigInt para Number
+    const convertBigIntToNumber = (obj: any): any => {
+      if (obj === null || obj === undefined) return obj;
+      
+      if (typeof obj === 'bigint') {
+        return Number(obj);
+      }
+      
+      if (Array.isArray(obj)) {
+        return obj.map(convertBigIntToNumber);
+      }
+      
+      if (typeof obj === 'object') {
+        const converted: any = {};
+        for (const [key, value] of Object.entries(obj)) {
+          converted[key] = convertBigIntToNumber(value);
+        }
+        return converted;
+      }
+      
+      return obj;
+    };
+    
+    // Converter BigInt para Number nos dados
+    data = convertBigIntToNumber(data);
     
     console.log('📋 [Reports/TempoMedioUsuarioCompleto] Dados processados:');
     console.log('  📊 Quantidade de registros:', data?.length || 0);
