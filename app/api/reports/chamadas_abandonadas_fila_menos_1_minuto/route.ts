@@ -1,4 +1,13 @@
 import { NextResponse } from 'next/server';
+import mariadb from 'mariadb';
+
+const pool = mariadb.createPool({
+  host: process.env.DB_HOST_DPRJ,
+  user: process.env.DB_USER_DPRJ,
+  password: process.env.DB_PASSWORD_DPRJ,
+  database: process.env.DB_NAME_DPRJ,
+  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT_DPRJ),
+});
 
 export async function GET(request: Request) {
   console.log('🚀 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Iniciando consulta de chamadas abandonadas em fila com menos de 1 minuto...');
@@ -24,80 +33,137 @@ export async function GET(request: Request) {
     );
   }
 
+  // Se não tiver data final, usa a mesma data inicial
+  const finalEndDate = endDate || startDate;
+  console.log('� [Reports/ChamadasAbandonadasNaFilaMenos1Min] Data final processada:', finalEndDate);
+
+  let conn;
   try {
-    console.log('🔄 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Usando endpoint dinâmico /api/query/select');
+    console.log('🔗 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Obtendo conexão do pool...');
+    conn = await pool.getConnection();
+    console.log('✅ [Reports/ChamadasAbandonadasNaFilaMenos1Min] Conexão obtida com sucesso');
+
+    console.log('🔧 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Executando query direta no banco de dados...');
+    const startTime = Date.now();
+    // Construir a query SQL com filtros
+    let query = `
+      SELECT 
+        created as data,
+        callid as 'ID Chamada',
+        queuename as 'Nome da Fila',
+        agent as Agente,
+        data1 as tempo
+      FROM asterisk.queues_log
+      WHERE event = 'ABANDON'
+        AND CAST(data1 AS UNSIGNED) < 60
+        AND created >= ?
+    `;
     
-    // Construir as condições WHERE
-    const whereConditions = [
-      { campo: 'event', valor: 'ABANDON', operacao: '=' },
-      { campo: 'CAST(data1 AS UNSIGNED)', valor: 60, operacao: '<' },
-      { campo: 'created', valor: startDate, operacao: '>=' }
-    ];
+    const queryParams = [startDate];
     
     // Se tiver data final, adiciona condição
     if (endDate) {
-      whereConditions.push({ campo: 'created', valor: endDate + ' 23:59:59', operacao: '<=' });
+      query += ' AND created <= ?';
+      queryParams.push(endDate + ' 23:59:59');
     }
     
-    const requestBody = {
-      tabela: 'asterisk.queues_log',
-      campos: [
-        { campo: 'created', alias: 'data', type: 'Date' },
-        { campo: 'callid', alias: 'ID Chamada', type: 'Number' },
-        { campo: 'queuename', alias: 'Nome da Fila', type: 'String' },
-        { campo: 'agent', alias: 'Agente', type: 'String' },
-        { campo: 'data1', alias: 'tempo', type: 'Number' }
-      ],
-      where: whereConditions,
-      whereType: 'AND',
-      orderby: { campo: 'created', direcao: sortOrder }
-    };
+    query += ` ORDER BY created ${sortOrder}`;
     
-    console.log('� [Reports/ChamadasAbandonadasNaFilaMenos1Min] Enviando para endpoint dinâmico:', requestBody);
+    console.log('📝 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Query SQL:', query);
+    console.log('📝 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Parâmetros:', queryParams);
+    console.log('🌏 [Reports/ChamadasAbandonadasNaFilaMenos1Min] ATENÇÃO: Servidor na China - datas passadas diretamente sem conversão de fuso');
+
+    console.log('⚡ [Reports/ChamadasAbandonadasNaFilaMenos1Min] Executando query...');
+    const rows = await conn.query(query, queryParams);
     
-    const response = await fetch('http://localhost:3002/api/query/select', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
+    const executionTime = Date.now() - startTime;
+    console.log(`⏱️ [Reports/ChamadasAbandonadasNaFilaMenos1Min] Query executada em ${executionTime}ms`);
+    
+    console.log('📊 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Resultado bruto da query:');
+    console.log('  🔍 Tipo:', typeof rows);
+    console.log('  📏 É array:', Array.isArray(rows));
+    console.log('  📊 Length:', rows?.length);
+    
+    // Converter BigInt para string se necessário
+    const data = rows.map((row: any) => {
+      const convertedRow: any = {};
+      for (const [key, value] of Object.entries(row)) {
+        convertedRow[key] = typeof value === 'bigint' ? value.toString() : value;
+      }
+      return convertedRow;
     });
     
-    if (!response.ok) {
-      throw new Error(`Erro HTTP do endpoint dinâmico: ${response.status}`);
-    }
-    
-    const result = await response.json();
-    console.log('✅ [Reports/ChamadasAbandonadasNaFilaMenos1Min] Dados recebidos do endpoint dinâmico:', result);
-    
-    if (result.success) {
-      console.log('📊 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Total de registros:', result.data?.length || 0);
-      return NextResponse.json({
-        success: true,
-        data: result.data || [],
-        total: result.total || 0,
-        executionTime: result.executionTime
-      });
-    } else {
-      console.error('❌ [Reports/ChamadasAbandonadasNaFilaMenos1Min] Erro no endpoint dinâmico:', result.error);
-      return NextResponse.json(
-        { 
-          success: false,
-          error: result.error || 'Erro no endpoint dinâmico'
-        },
-        { status: 500 }
-      );
+    console.log('📋 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Dados processados:');
+    console.log('  📊 Quantidade de registros:', data?.length || 0);
+    if (data && data.length > 0) {
+      console.log('  🗂️ Campos do primeiro registro:', Object.keys(data[0]));
+      console.log('  📄 Primeiro registro completo:', JSON.stringify(data[0], null, 2));
+      console.log('  📄 Último registro completo:', JSON.stringify(data[data.length - 1], null, 2));
     }
 
-  } catch (error: any) {
-    console.error('💥 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Erro durante requisição:', error.message);
-    console.error('🔍 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Stack trace:', error.stack);
+    // Verificar se temos dados válidos
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      console.log('⚠️ [Reports/ChamadasAbandonadasNaFilaMenos1Min] Nenhum dado retornado pela query');
+      return NextResponse.json({
+        success: true,
+        data: [],
+        message: 'Nenhum dado encontrado para o período especificado',
+        params: {
+          startDate,
+          endDate: finalEndDate,
+          sortOrder
+        },
+        executionTime
+      });
+    }
+
+    console.log('✅ [Reports/ChamadasAbandonadasNaFilaMenos1Min] Retornando dados com sucesso');
+    return NextResponse.json({
+      success: true,
+      data,
+      totalRecords: data.length,
+      params: {
+        startDate,
+        endDate: finalEndDate,
+        sortOrder
+      },
+      executionTime
+    });
+
+  } catch (error) {
+    console.error('💥 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Erro ao executar query:', error);
+    console.error('� [Reports/ChamadasAbandonadasNaFilaMenos1Min] Detalhes do erro:');
+    if (error instanceof Error) {
+      console.error('  🏷️ Nome:', error.name);
+      console.error('  💬 Mensagem:', error.message);
+      console.error('  🧭 Stack:', error.stack);
+    }
+    
+    // Log adicional para erros do MariaDB
+    if (error && typeof error === 'object') {
+      console.error('  📊 Código SQL:', (error as any).sqlState || (error as any).code);
+      console.error('  🔢 Errno:', (error as any).errno);
+      console.error('  📄 SQL Message:', (error as any).sqlMessage);
+    }
     
     return NextResponse.json(
       { 
-        success: false,
-        error: error.message || 'Erro interno do servidor',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        success: false, 
+        error: 'Erro ao executar relatório de chamadas abandonadas na fila com menos de 1 minuto',
+        details: error instanceof Error ? error.message : 'Erro desconhecido',
+        params: {
+          startDate,
+          endDate: finalEndDate,
+          sortOrder
+        }
       },
       { status: 500 }
     );
+  } finally {
+    if (conn) {
+      console.log('🔚 [Reports/ChamadasAbandonadasNaFilaMenos1Min] Liberando conexão...');
+      await conn.release();
+      console.log('✅ [Reports/ChamadasAbandonadasNaFilaMenos1Min] Conexão liberada');
+    }
   }
 }
