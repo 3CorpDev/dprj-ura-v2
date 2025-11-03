@@ -1,4 +1,13 @@
 import { NextResponse } from 'next/server';
+import mariadb from 'mariadb';
+
+const pool = mariadb.createPool({
+  host: process.env.DB_HOST_DPRJ,
+  user: process.env.DB_USER_DPRJ,
+  password: process.env.DB_PASSWORD_DPRJ,
+  database: process.env.DB_NAME_DPRJ,
+  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT_DPRJ),
+});
 
 export async function GET(request: Request) {
   console.log('🚀 [Reports/Absenteísmo] Iniciando consulta de absenteísmo...');
@@ -9,68 +18,109 @@ export async function GET(request: Request) {
   console.log('📋 [Reports/Absenteísmo] Parâmetros recebidos:');
   console.log('  🔄 Ordenação:', sortOrder);
 
+  let conn;
   try {
-    console.log('🔄 [Reports/Absenteísmo] Usando endpoint dinâmico /api/query/select');
+    console.log('� [Reports/Absenteísmo] Obtendo conexão do pool...');
+    conn = await pool.getConnection();
+    console.log('✅ [Reports/Absenteísmo] Conexão obtida com sucesso');
+
+    console.log('🔧 [Reports/Absenteísmo] Executando query direta no banco de dados...');
+    const startTime = Date.now();
+    const query = `
+      SELECT 
+        nome_agente,
+        ramal,
+        total_dias_ativos,
+        dias_7_dias,
+        dias_15_dias,
+        dias_30_dias,
+        DATE_FORMAT(ultimo_dia_ativo, "%Y-%m-%d") as ultimo_dia_ativo
+      FROM asterisk.vAbsenteismo
+      ORDER BY nome_agente ${sortOrder}
+    `;
     
-    const requestBody = {
-      tabela: 'asterisk.vAbsenteismo',
-      campos: [
-        { campo: 'nome_agente', alias: 'nome_agente', type: 'String' },
-        { campo: 'ramal', alias: 'ramal', type: 'Number' },
-        { campo: 'total_dias_ativos', alias: 'total_dias_ativos', type: 'Number' },
-        { campo: 'dias_7_dias', alias: 'dias_7_dias', type: 'String' },
-        { campo: 'dias_15_dias', alias: 'dias_15_dias', type: 'String' },
-        { campo: 'dias_30_dias', alias: 'dias_30_dias', type: 'String' },
-        { campo: 'DATE_FORMAT(ultimo_dia_ativo, "%Y-%m-%d")', alias: 'ultimo_dia_ativo', type: 'String' }
-      ],
-      orderby: { campo: 'nome_agente', direcao: sortOrder }
-    };
+    console.log('📝 [Reports/Absenteísmo] Query SQL:', query);
+    console.log('🌏 [Reports/Absenteísmo] ATENÇÃO: Servidor na China - sem conversão de fuso');
+
+    console.log('⚡ [Reports/Absenteísmo] Executando query...');
+    const rows = await conn.query(query);
     
-    console.log('� [Reports/Absenteísmo] Enviando para endpoint dinâmico:', requestBody);
+    const executionTime = Date.now() - startTime;
+    console.log(`⏱️ [Reports/Absenteísmo] Query executada em ${executionTime}ms`);
     
-    const response = await fetch('http://localhost:3002/api/query/select', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
+    console.log('📊 [Reports/Absenteísmo] Resultado bruto da query:');
+    console.log('  🔍 Tipo:', typeof rows);
+    console.log('  📏 É array:', Array.isArray(rows));
+    console.log('  📊 Length:', rows?.length);
+    
+    // Converter BigInt para string se necessário
+    const data = rows.map((row: any) => {
+      const convertedRow: any = {};
+      for (const [key, value] of Object.entries(row)) {
+        convertedRow[key] = typeof value === 'bigint' ? value.toString() : value;
+      }
+      return convertedRow;
     });
     
-    if (!response.ok) {
-      throw new Error(`Erro HTTP do endpoint dinâmico: ${response.status}`);
-    }
-    
-    const result = await response.json();
-    console.log('✅ [Reports/Absenteísmo] Dados recebidos do endpoint dinâmico:', result);
-    
-    if (result.success) {
-      console.log('📊 [Reports/Absenteísmo] Total de registros:', result.data?.length || 0);
-      return NextResponse.json({
-        success: true,
-        data: result.data || [],
-        total: result.total || 0,
-        executionTime: result.executionTime
-      });
-    } else {
-      console.error('❌ [Reports/Absenteísmo] Erro no endpoint dinâmico:', result.error);
-      return NextResponse.json(
-        { 
-          success: false,
-          error: result.error || 'Erro no endpoint dinâmico'
-        },
-        { status: 500 }
-      );
+    console.log('📋 [Reports/Absenteísmo] Dados processados:');
+    console.log('  📊 Quantidade de registros:', data?.length || 0);
+    if (data && data.length > 0) {
+      console.log('  🗂️ Campos do primeiro registro:', Object.keys(data[0]));
+      console.log('  📄 Primeiro registro completo:', JSON.stringify(data[0], null, 2));
+      console.log('  📄 Último registro completo:', JSON.stringify(data[data.length - 1], null, 2));
     }
 
-  } catch (error: any) {
-    console.error('💥 [Reports/Absenteísmo] Erro durante requisição:', error.message);
-    console.error('🔍 [Reports/Absenteísmo] Stack trace:', error.stack);
+    // Verificar se temos dados válidos
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      console.log('⚠️ [Reports/Absenteísmo] Nenhum dado retornado pela query');
+      return NextResponse.json({
+        success: true,
+        data: [],
+        message: 'Nenhum dado encontrado para absenteísmo',
+        params: { sortOrder },
+        executionTime
+      });
+    }
+
+    console.log('✅ [Reports/Absenteísmo] Retornando dados com sucesso');
+    return NextResponse.json({
+      success: true,
+      data,
+      totalRecords: data.length,
+      params: { sortOrder },
+      executionTime
+    });
+
+  } catch (error) {
+    console.error('💥 [Reports/Absenteísmo] Erro ao executar query:', error);
+    console.error('� [Reports/Absenteísmo] Detalhes do erro:');
+    if (error instanceof Error) {
+      console.error('  🏷️ Nome:', error.name);
+      console.error('  💬 Mensagem:', error.message);
+      console.error('  🧭 Stack:', error.stack);
+    }
+    
+    // Log adicional para erros do MariaDB
+    if (error && typeof error === 'object') {
+      console.error('  📊 Código SQL:', (error as any).sqlState || (error as any).code);
+      console.error('  🔢 Errno:', (error as any).errno);
+      console.error('  📄 SQL Message:', (error as any).sqlMessage);
+    }
     
     return NextResponse.json(
       { 
-        success: false,
-        error: error.message || 'Erro interno do servidor',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        success: false, 
+        error: 'Erro ao executar relatório de absenteísmo',
+        details: error instanceof Error ? error.message : 'Erro desconhecido',
+        params: { sortOrder }
       },
       { status: 500 }
     );
+  } finally {
+    if (conn) {
+      console.log('🔚 [Reports/Absenteísmo] Liberando conexão...');
+      await conn.release();
+      console.log('✅ [Reports/Absenteísmo] Conexão liberada');
+    }
   }
 }
