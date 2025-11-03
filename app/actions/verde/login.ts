@@ -8,6 +8,7 @@ export async function loginVerde(base64Token: string, loginData: any) {
         //const baseUrl = 'https://verde.rj.def.br/api/verde/usuario/login';
         const baseUrl = process.env.ENDPOINT_LOGIN;
         if (!baseUrl) {
+            console.log('===== ENDPOINT_LOGIN environment variable is not defined =====')
             throw new Error('ENDPOINT_LOGIN environment variable is not defined');
         }
         const response = await fetch(baseUrl, {
