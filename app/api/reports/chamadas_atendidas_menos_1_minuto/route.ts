@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server';
+import mariadb from 'mariadb';
+
+const pool = mariadb.createPool({
+  host: process.env.DB_HOST_DPRJ,
+  user: process.env.DB_USER_DPRJ,
+  password: process.env.DB_PASSWORD_DPRJ,
+  database: process.env.DB_NAME_DPRJ,
+  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT_DPRJ),
+});
 
 export async function GET(request: Request) {
+  const startTime = Date.now();
   console.log('🚀 [Reports/ChamadasMenos1Min] Iniciando consulta de chamadas atendidas inferiores a 1 minuto...');
   
   const { searchParams } = new URL(request.url);
@@ -24,83 +34,129 @@ export async function GET(request: Request) {
     );
   }
 
+  // Se não tiver data final, usa a mesma data inicial
+  const finalEndDate = endDate || startDate;
+  console.log('� [Reports/ChamadasMenos1Min] Data final processada:', finalEndDate);
+
+  let conn;
   try {
-    console.log('🔄 [Reports/ChamadasMenos1Min] Usando endpoint dinâmico /api/query/select');
+    console.log('🔗 [Reports/ChamadasMenos1Min] Obtendo conexão do pool...');
+    conn = await pool.getConnection();
+    console.log('✅ [Reports/ChamadasMenos1Min] Conexão obtida com sucesso');
+
+    console.log('🔧 [Reports/ChamadasMenos1Min] Executando query direta no banco de dados...');
+    const startTime = Date.now();
+    // Construir a query SQL com filtros
+    let query = `
+      SELECT 
+        calldate as data,
+        duration as duracao,
+        billsec as segundos,
+        clid as cliente,
+        src as origem,
+        dst as destino,
+        channel as canal_origem,
+        dstchannel as canal_destino
+      FROM asterisk.cdr
+      WHERE disposition = 'ANSWERED'
+        AND billsec < 60
+        AND calldate >= ?
+    `;
     
-    // Construir as condições WHERE
-    const whereConditions = [
-      { campo: 'disposition', valor: 'ANSWERED', operacao: '=' },
-      { campo: 'billsec', valor: 60, operacao: '<' },
-      { campo: 'calldate', valor: startDate, operacao: '>=' }
-    ];
+    const queryParams = [startDate];
     
     // Se tiver data final, adiciona condição
     if (endDate) {
-      whereConditions.push({ campo: 'calldate', valor: endDate + ' 23:59:59', operacao: '<=' });
+      query += ' AND calldate <= ?';
+      queryParams.push(endDate + ' 23:59:59');
     }
     
-    const requestBody = {
-      tabela: 'asterisk.cdr',
-      campos: [
-        { campo: 'calldate', alias: 'data', type: 'Date' },
-        { campo: 'duration', alias: 'duracao', type: 'Number' },
-        { campo: 'billsec', alias: 'segundos', type: 'Number' },
-        { campo: 'clid', alias: 'cliente', type: 'String' },
-        { campo: 'src', alias: 'origem', type: 'String' },
-        { campo: 'dst', alias: 'destino', type: 'String' },
-        { campo: 'channel', alias: 'canal_origem', type: 'String' },
-        { campo: 'dstchannel', alias: 'canal_destino', type: 'String' }
-      ],
-      where: whereConditions,
-      whereType: 'AND',
-      orderby: { campo: 'calldate', direcao: sortOrder }
-    };
+    query += ` ORDER BY calldate ${sortOrder}`;
     
-    console.log('� [Reports/ChamadasMenos1Min] Enviando para endpoint dinâmico:', requestBody);
+    console.log('📝 [Reports/ChamadasMenos1Min] Query SQL:', query);
+    console.log('📝 [Reports/ChamadasMenos1Min] Parâmetros:', queryParams);
+    console.log('🌏 [Reports/ChamadasMenos1Min] ATENÇÃO: Servidor na China - datas passadas diretamente sem conversão de fuso');
+
+    console.log('⚡ [Reports/ChamadasMenos1Min] Executando query...');
+    const rows = await conn.query(query, queryParams);
     
-    const response = await fetch('http://localhost:3002/api/query/select', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
+    const executionTime = Date.now() - startTime;
+    console.log(`⏱️ [Reports/ChamadasMenos1Min] Query executada em ${executionTime}ms`);
+    
+    console.log('📊 [Reports/ChamadasMenos1Min] Resultado bruto da query:');
+    console.log('  🔍 Tipo:', typeof rows);
+    console.log('  📏 É array:', Array.isArray(rows));
+    console.log('  📊 Length:', rows?.length);
+    
+    // Converter BigInt para string se necessário
+    const data = rows.map((row: any) => {
+      const convertedRow: any = {};
+      for (const [key, value] of Object.entries(row)) {
+        convertedRow[key] = typeof value === 'bigint' ? value.toString() : value;
+      }
+      return convertedRow;
     });
     
-    if (!response.ok) {
-      throw new Error(`Erro HTTP do endpoint dinâmico: ${response.status}`);
-    }
-    
-    const result = await response.json();
-    console.log('✅ [Reports/ChamadasMenos1Min] Dados recebidos do endpoint dinâmico:', result);
-    
-    if (result.success) {
-      console.log('📊 [Reports/ChamadasMenos1Min] Total de registros:', result.data?.length || 0);
-      return NextResponse.json({
-        success: true,
-        data: result.data || [],
-        total: result.total || 0,
-        executionTime: result.executionTime
-      });
-    } else {
-      console.error('❌ [Reports/ChamadasMenos1Min] Erro no endpoint dinâmico:', result.error);
-      return NextResponse.json(
-        { 
-          success: false,
-          error: result.error || 'Erro no endpoint dinâmico'
-        },
-        { status: 500 }
-      );
+    console.log('📋 [Reports/ChamadasMenos1Min] Dados processados:');
+    console.log('  📊 Quantidade de registros:', data?.length || 0);
+    if (data && data.length > 0) {
+      console.log('  🗂️ Campos do primeiro registro:', Object.keys(data[0]));
+      console.log('  📄 Primeiro registro completo:', JSON.stringify(data[0], null, 2));
+      console.log('  📄 Último registro completo:', JSON.stringify(data[data.length - 1], null, 2));
     }
 
-  } catch (error: any) {
-    console.error('💥 [Reports/ChamadasMenos1Min] Erro durante requisição:', error.message);
-    console.error('🔍 [Reports/ChamadasMenos1Min] Stack trace:', error.stack);
+    // Verificar se temos dados válidos
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      console.log('⚠️ [Reports/ChamadasMenos1Min] Nenhum dado retornado pela query');
+      return NextResponse.json({
+        success: true,
+        data: [],
+        message: 'Nenhum dado encontrado para o período especificado',
+        params: {
+          startDate,
+          endDate: finalEndDate,
+          sortOrder
+        },
+        executionTime
+      });
+    }
+
+    console.log('✅ [Reports/ChamadasMenos1Min] Retornando dados com sucesso');
+    return NextResponse.json({
+      success: true,
+      data,
+      totalRecords: data.length,
+      params: {
+        startDate,
+        endDate: finalEndDate,
+        sortOrder
+      },
+      executionTime
+    });
+
+  } catch (error) {
+    const executionTime = Date.now() - startTime;
+    console.error('❌ [Reports/ChamadasMenos1Min] Erro na API:', error);
+    console.error('❌ [Reports/ChamadasMenos1Min] Stack trace:', error instanceof Error ? error.stack : 'N/A');
+    console.log(`⏱️ [Reports/ChamadasMenos1Min] Falha após ${executionTime}ms`);
     
     return NextResponse.json(
       { 
         success: false,
-        error: error.message || 'Erro interno do servidor',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        error: 'Erro interno do servidor ao buscar dados de chamadas atendidas em menos de 1 minuto',
+        message: error instanceof Error ? error.message : 'Erro desconhecido',
+        executionTime
       },
       { status: 500 }
     );
+  } finally {
+    if (conn) {
+      try {
+        await conn.end();
+        console.log('🔗 [Reports/ChamadasMenos1Min] Conexão com MariaDB fechada');
+      } catch (err) {
+        console.error('❌ [Reports/ChamadasMenos1Min] Erro ao fechar conexão:', err);
+      }
+    }
   }
 }
