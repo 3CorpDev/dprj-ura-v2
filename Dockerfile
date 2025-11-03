@@ -21,7 +21,7 @@ RUN rm -rf .next
 RUN npm run build
 
 # Exponha a porta necessária
-EXPOSE 3002
+EXPOSE 3000
 
 # Inicie a aplicação
 CMD ["npm", "run", "start"]
