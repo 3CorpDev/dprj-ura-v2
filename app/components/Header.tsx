@@ -42,7 +42,13 @@ interface TempoMedioAtendimentoData {
     tempo_medio_bloqueio: number;
 }
 
-export default function Header({ dataCall, dataLoginVerde, queuesInPaused }: { dataCall: DataCall, dataLoginVerde: DataLoginVerde, queuesInPaused: QueuePause[] }) {
+export default function Header({ dataCall, dataLoginVerde, queuesInPaused, isLoggedIn, onLogout }: { 
+  dataCall: DataCall, 
+  dataLoginVerde: DataLoginVerde, 
+  queuesInPaused: QueuePause[], 
+  isLoggedIn: boolean,
+  onLogout: () => void
+}) {
     const [pausedQueues, setPausedQueues] = useState<QueuePause[]>([]);
     // const [tma, setTma] = useState<number | null>(null);
     // const [tmaError, setTmaError] = useState(false);
@@ -92,8 +98,11 @@ export default function Header({ dataCall, dataLoginVerde, queuesInPaused }: { d
     }, [queuesInPaused]);
 
     const handleLogout = () => {
+        console.log('🚪 [Header] Iniciando processo de logout...');
         localStorage.removeItem('base64Token');
-        window.location.reload();
+        localStorage.removeItem('tokenVerde');
+        console.log('🗑️ [Header] Tokens removidos do localStorage');
+        onLogout();
     }
 
     // Função para calcular os últimos 30 dias
@@ -212,27 +221,35 @@ export default function Header({ dataCall, dataLoginVerde, queuesInPaused }: { d
                                     <p className="text-xs opacity-90">Gerenciamento de chamadas</p>
                                 </div>
                             </div>
-                            <Separator orientation="vertical" className="h-14 bg-white/40" />
-                            <div className="flex flex-col items-start">
-                                <p className="text-xs opacity-90">Login: {dataLoginVerde.login}</p>
-                                <p className="text-xs opacity-90">Ramal: {dataLoginVerde.ramal}</p>
-                                <div className="flex items-center gap-1">
-                                    <p className="text-xs opacity-90">&nbsp;</p>
-                                </div>
-                                <Button size="sm" onClick={handleLogout} className="w-full mt-1 bg-white/20 hover:bg-white/30 transition-colors">Logout</Button>
-                            </div>
-                            <div className="flex flex-col items-start">
-                                <p className="text-xs opacity-90" title="Quantidade de Chamadas Atendidas">QCA: {totalAtendimentos}</p>
-                                <p className="text-xs opacity-90" title="Quantidade de Pausas e Bloqueios">QPB: {qtdPausasBloqueios}</p>
-                                <p className="text-xs opacity-90" title="Tempo Total Logado">TTL: {totalTempoLogadoHoras}</p>                               
-                                <Button size="sm" className="w-full mt-1 bg-white/20 hover:bg-white/30 transition-colors visible-hidden"></Button>
-                            </div>
-                            <div className="flex flex-col items-start">
-                                <p className="text-xs opacity-90" title="Tempo Médio de Atendimento">TMA: {tempoMedioMinutos}</p>
-                                <p className="text-xs opacity-90" title="Quantidade Média de Bloqueio">QMB: {qtdMediaBloqueio}</p>
-                                <p className="text-xs opacity-90" title="Tempo Médio de Bloqueio">TMB: {tempoMedioBloqueioMinutos}</p>                               
-                                <Button size="sm" className="w-full mt-1 bg-white/20 hover:bg-white/30 transition-colors visible-hidden"></Button>
-                            </div>
+                            {isLoggedIn && (
+                                <>
+                                    <Separator orientation="vertical" className="h-14 bg-white/40" />
+                                    <div className="flex flex-col items-start">
+                                        <p className="text-xs opacity-90">Login: {dataLoginVerde.login}</p>
+                                        <p className="text-xs opacity-90">Ramal: {dataLoginVerde.ramal}</p>
+                                        <div className="flex items-center gap-1">
+                                            <p className="text-xs opacity-90">&nbsp;</p>
+                                        </div>
+                                        <Button size="sm" onClick={handleLogout} className="w-full mt-1 bg-white/20 hover:bg-white/30 transition-colors">Logout</Button>
+                                    </div>
+                                </>
+                            )}
+                            {isLoggedIn && (
+                                <>
+                                    <div className="flex flex-col items-start">
+                                        <p className="text-xs opacity-90" title="Quantidade de Chamadas Atendidas">QCA: {totalAtendimentos}</p>
+                                        <p className="text-xs opacity-90" title="Quantidade de Pausas e Bloqueios">QPB: {qtdPausasBloqueios}</p>
+                                        <p className="text-xs opacity-90" title="Tempo Total Logado">TTL: {totalTempoLogadoHoras}</p>                               
+                                        <Button size="sm" className="w-full mt-1 bg-white/20 hover:bg-white/30 transition-colors visible-hidden"></Button>
+                                    </div>
+                                    <div className="flex flex-col items-start">
+                                        <p className="text-xs opacity-90" title="Tempo Médio de Atendimento">TMA: {tempoMedioMinutos}</p>
+                                        <p className="text-xs opacity-90" title="Quantidade Média de Bloqueio">QMB: {qtdMediaBloqueio}</p>
+                                        <p className="text-xs opacity-90" title="Tempo Médio de Bloqueio">TMB: {tempoMedioBloqueioMinutos}</p>                               
+                                        <Button size="sm" className="w-full mt-1 bg-white/20 hover:bg-white/30 transition-colors visible-hidden"></Button>
+                                    </div>
+                                </>
+                            )}
                             {pausedQueues.length > 0 && (
                                 <>
                                     <Separator orientation="vertical" className="h-14 bg-white/40" />

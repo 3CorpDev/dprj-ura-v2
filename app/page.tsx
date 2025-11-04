@@ -178,10 +178,33 @@ export default function Home() {
   }, [cleanupSocket]);
 
   const handleLoginVerde = useCallback((loginData: LoginData) => {
+    console.log('✅ [HomePage] handleLoginVerde chamado', loginData);
     setIsLoggedIn(true);
     initializeSocket(loginData.ramal);
     setDataLoginVerde(loginData);
   }, [initializeSocket]);
+
+  const handleLogout = useCallback(() => {
+    console.log('🚪 [HomePage] handleLogout chamado - limpando estado');
+    setIsLoggedIn(false);
+    setDataLoginVerde({
+      login: '',
+      password: '',
+      ramal: '',
+    });
+    setDataCall({
+      callerNumber: '',
+      extension: '',
+      uniqueId: '',
+      linkedId: '',
+      protocol: '',
+      timestamp: '',
+      metadata: {},
+    });
+    setQueuesInPaused([]);
+    cleanupSocket();
+    console.log('✅ [HomePage] Estado limpo e socket desconectado');
+  }, [cleanupSocket]);
 
   useEffect(() => {
     const savedLoginData = localStorage.getItem('base64Token');
@@ -207,7 +230,13 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header dataCall={dataCall} dataLoginVerde={dataLoginVerde} queuesInPaused={queuesInPaused} />
+      <Header 
+        dataCall={dataCall} 
+        dataLoginVerde={dataLoginVerde} 
+        queuesInPaused={queuesInPaused} 
+        isLoggedIn={isLoggedIn}
+        onLogout={handleLogout}
+      />
       <main className="container mx-auto px-4 mt-4">
         {isLoggedIn ? (
           <IframeView />
