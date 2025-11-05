@@ -7,19 +7,11 @@ interface ReportData {
 interface TotalChamadasAtendidasPassouFilaProps {
   data: ReportData[];
   loading: boolean;
-  currentPage: number;
-  itemsPerPage: number;
-  onPageChange: (page: number) => void;
-  onItemsPerPageChange: (items: number) => void;
 }
 
 export default function TotalChamadasAtendidasPassouFila({
   data,
-  loading,
-  currentPage,
-  itemsPerPage,
-  onPageChange,
-  onItemsPerPageChange
+  loading
 }: TotalChamadasAtendidasPassouFilaProps) {
   
   const formatValue = (value: any, columnName: string) => {
@@ -30,48 +22,25 @@ export default function TotalChamadasAtendidasPassouFila({
 
     const columnLower = columnName.toLowerCase();
     
-    // Formatação para datas
-    if (columnLower.includes('data') || value.match?.(/^\d{4}-\d{2}-\d{2}/)) {
-      try {
-        return new Date(value).toLocaleDateString('pt-BR', {
-          day: '2-digit',
-          month: '2-digit', 
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-      } catch {
-        return value;
-      }
-    }
-    
-    // Formatação para telefone
-    if (columnLower.includes('telefone') && typeof value === 'string') {
-      // Formatar telefone brasileiro
-      const digits = value.replace(/\D/g, '');
-      if (digits.length === 11) {
-        return `(${digits.substr(0,2)}) ${digits.substr(2,5)}-${digits.substr(7,4)}`;
-      } else if (digits.length === 10) {
-        return `(${digits.substr(0,2)}) ${digits.substr(2,4)}-${digits.substr(6,4)}`;
-      }
-      return value;
-    }
-    
-    // Para nome_fila e agente - manter como string
-    if (columnLower.includes('fila') || columnLower.includes('agente')) {
+    // Formatação para fila - manter como string
+    if (columnLower === 'fila') {
       return value.toString();
+    }
+    
+    // Formatação para quantidade - formatar como número
+    if (columnLower === 'quantidade') {
+      const num = parseInt(value);
+      return isNaN(num) ? value : num.toLocaleString('pt-BR');
     }
     
     return value;
   };
 
   const formatColumnName = (columnName: string) => {
-    // Mapeamento específico para os campos da procedure sp_consulta_fila
+    // Mapeamento específico para os campos da procedure sp_relatorio_filas_conectadas_total
     const columnMap: { [key: string]: string } = {
-      'data': '📅 Data/Hora',
-      'nome_fila': '📞 Fila', 
-      'agente': '👤 Agente',
-      'telefone': '📱 Telefone'
+      'fila': '📞 Fila',
+      'quantidade': '📊 Quantidade'
     };
     
     return columnMap[columnName.toLowerCase()] || columnName
@@ -82,14 +51,11 @@ export default function TotalChamadasAtendidasPassouFila({
 
   const getColumns = () => {
     if (data.length === 0) return [];
-    return Object.keys(data[0]);
+    // Retornar apenas as colunas que queremos exibir (fila e quantidade)
+    const allColumns = Object.keys(data[0]);
+    return allColumns.filter(col => ['fila', 'quantidade'].includes(col.toLowerCase()));
   };
 
-  // Paginação
-  const totalPages = Math.ceil(data.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentData = data.slice(startIndex, endIndex);
   const columns = getColumns();
 
   if (loading) {
@@ -118,55 +84,30 @@ export default function TotalChamadasAtendidasPassouFila({
 
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
-      {/* Controles de paginação no topo */}
-      <div className="px-4 py-3 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-        <div className="flex items-center text-sm text-gray-700">
-          <span className="mr-2">Mostrar</span>
-          <select
-            value={itemsPerPage}
-            onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
-            className="border border-gray-300 rounded px-2 py-1 text-sm"
-          >
-            <option value={10}>10</option>
-            <option value={25}>25</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-          </select>
-          <span className="ml-2">registros</span>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-            disabled={currentPage === 1}
-            className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-          >
-            ‹ Anterior
-          </button>
-          
-          <span className="text-sm text-gray-700 px-3">
-            Página {currentPage} de {totalPages} ({data.length} registros)
-          </span>
-          
-          <button
-            onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
-            disabled={currentPage === totalPages}
-            className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-          >
-            Próxima ›
-          </button>
+      {/* Header elegante para relatório de filas */}
+      <div className="px-4 py-3 border-b-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-800">
+            <span className="font-semibold text-blue-800">📊 Total de registros: </span>
+            <span className="font-bold text-blue-900 bg-blue-100 px-2 py-1 rounded-full text-xs">
+              {data.length}
+            </span>
+          </div>
+          <div className="text-xs text-gray-600 bg-white px-2 py-1 rounded-full border border-gray-200">
+            📞 Filas Conectadas
+          </div>
         </div>
       </div>
 
-      {/* Tabela */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      {/* Tabela com design melhorado */}
+      <div className="overflow-x-auto border border-gray-300 rounded-lg">
+        <table className="min-w-full divide-y divide-gray-300">
+          <thead className="bg-gradient-to-r from-blue-600 to-blue-700">
             <tr>
               {columns.map((column) => (
                 <th
                   key={column}
-                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  className="px-4 py-2 text-left text-sm font-semibold text-white uppercase tracking-wider border-r border-blue-500 last:border-r-0"
                 >
                   {formatColumnName(column)}
                 </th>
@@ -174,12 +115,15 @@ export default function TotalChamadasAtendidasPassouFila({
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {currentData.map((row, index) => (
-              <tr key={index} className="hover:bg-gray-50">
+            {data.map((row, index) => (
+              <tr 
+                key={index} 
+                className={`${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50 transition-colors duration-200`}
+              >
                 {columns.map((column) => (
                   <td
                     key={column}
-                    className="px-4 py-3 whitespace-nowrap text-sm text-gray-900"
+                    className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 border-r border-gray-200 last:border-r-0 font-medium"
                   >
                     {formatValue(row[column], column)}
                   </td>

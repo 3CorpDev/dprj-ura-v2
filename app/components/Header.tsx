@@ -105,21 +105,7 @@ export default function Header({ dataCall, dataLoginVerde, queuesInPaused, isLog
         onLogout();
     }
 
-    // Função para calcular os últimos 30 dias
-    const getLast30Days = () => {
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(endDate.getDate() - 30);
-        
-        const formatDate = (date: Date) => {
-            return date.toISOString().split('T')[0]; // Formato YYYY-MM-DD
-        };
-        
-        return {
-            startDate: formatDate(startDate),
-            endDate: formatDate(endDate)
-        };
-    };
+    // Função removida - não precisa mais calcular datas pois a procedure usa data atual
 
     // useEffect(() => {
     //     const fetchTMA = async () => {
@@ -156,13 +142,10 @@ export default function Header({ dataCall, dataLoginVerde, queuesInPaused, isLog
             console.log("🚀 [Header] Buscando tempo médio de atendimento por ramal...");
             if (dataLoginVerde.ramal) {
                 try {
-                    const { startDate, endDate } = getLast30Days();
-                    console.log(`📅 [Header] Período: ${startDate} a ${endDate}, Ramal: ${dataLoginVerde.ramal}`);
+                    console.log(`📅 [Header] Ramal: ${dataLoginVerde.ramal} (procedure usa data atual automaticamente)`);
                     
                     const params = new URLSearchParams({
-                        ramal: dataLoginVerde.ramal,
-                        startDate: startDate,
-                        endDate: endDate
+                        ramal: dataLoginVerde.ramal
                     });
 
                     const response = await fetch(`/api/reports/tempo_medio_atendimento_por_usuario_completo?${params}`);

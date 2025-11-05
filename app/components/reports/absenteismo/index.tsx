@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface AbsenteismoData {
   nome_agente: string;
@@ -20,19 +22,47 @@ export default function Absenteismo({ onLoadingChange }: AbsenteismoProps) {
   const [data, setData] = useState<AbsenteismoData[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
 
-  const fetchData = async () => {
+  // Função para obter o número de dias no mês
+  const getDaysInMonth = (year: number, month: number) => {
+    return new Date(year, month, 0).getDate();
+  };
+
+  // Função para converter mês/ano em datas de início e fim
+  const getDateRangeFromMonth = (monthYear: string) => {
+    const [year, month] = monthYear.split('-').map(Number);
+    const daysInMonth = getDaysInMonth(year, month);
+    
+    const startDate = `${year}-${month.toString().padStart(2, '0')}-01`;
+    const endDate = `${year}-${month.toString().padStart(2, '0')}-${daysInMonth.toString().padStart(2, '0')}`;
+    
+    return { startDate, endDate };
+  };
+
+  const fetchData = async (monthYear?: string) => {
     console.log('🚀 [Absenteísmo] Iniciando busca de dados...');
     onLoadingChange(true);
     
     try {
-      const response = await fetch('/api/reports/absenteismo');
+      let url = '/api/reports/absenteismo';
+      
+      // Se foi fornecido mês/ano, adiciona as datas como parâmetros
+      if (monthYear) {
+        const { startDate, endDate } = getDateRangeFromMonth(monthYear);
+        url += `?startDate=${startDate}&endDate=${endDate}`;
+        console.log(`📅 [Absenteísmo] Buscando dados para período: ${startDate} a ${endDate}`);
+      }
+
+      const response = await fetch(url);
       const result = await response.json();
 
       if (result.success) {
         console.log('✅ [Absenteísmo] Dados recebidos:', result.data?.length, 'registros');
         setData(result.data || []);
         setCurrentPage(1);
+        setHasSearched(true);
       } else {
         console.error('❌ [Absenteísmo] Erro na resposta:', result.error);
         alert('Erro ao carregar dados: ' + result.error);
@@ -45,9 +75,18 @@ export default function Absenteismo({ onLoadingChange }: AbsenteismoProps) {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const handleSearch = () => {
+    if (selectedMonth) {
+      fetchData(selectedMonth);
+    } else {
+      alert('Por favor, selecione um mês e ano para consultar.');
+    }
+  };
+
+  // Remover o useEffect que carregava automaticamente
+  // useEffect(() => {
+  //   fetchData();
+  // }, []);
 
   // Formatação de valores
   const formatValue = (value: any, columnName: string) => {
@@ -102,19 +141,76 @@ export default function Absenteismo({ onLoadingChange }: AbsenteismoProps) {
   const currentData = data.slice(startIndex, endIndex);
   const columns = data.length > 0 ? Object.keys(data[0]) : [];
 
-  if (data.length === 0) {
+  // Renderizar seletor de mês/ano sempre no topo
+  const renderMonthSelector = () => (
+    <div className="bg-white rounded-lg shadow p-6 mb-4">
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+        <div className="flex-1">
+          <label htmlFor="month-selector" className="block text-sm font-medium text-gray-700 mb-2">
+            📅 Selecione o Mês/Ano para Consulta
+          </label>
+          <Input
+            id="month-selector"
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="w-full sm:w-auto"
+            placeholder="Selecione mês/ano"
+          />
+        </div>
+        <Button 
+          onClick={handleSearch}
+          disabled={!selectedMonth}
+          className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"
+        >
+          🔍 Consultar Absenteísmo
+        </Button>
+      </div>
+      {selectedMonth && (
+        <div className="mt-3 p-2 bg-blue-50 rounded text-sm text-blue-700">
+          <span className="font-medium">Período selecionado:</span> {
+            (() => {
+              const { startDate, endDate } = getDateRangeFromMonth(selectedMonth);
+              return `${new Date(startDate).toLocaleDateString('pt-BR')} a ${new Date(endDate).toLocaleDateString('pt-BR')}`;
+            })()
+          }
+        </div>
+      )}
+    </div>
+  );
+
+  // Se não pesquisou ainda ou não tem dados, mostrar apenas o seletor
+  if (!hasSearched) {
     return (
-      <div className="bg-white rounded-lg shadow p-6 text-center">
-        <p className="text-gray-500 text-sm">
-          Nenhum dado de absenteísmo encontrado
-        </p>
+      <div>
+        {renderMonthSelector()}
+        <div className="bg-white rounded-lg shadow p-6 text-center">
+          <p className="text-gray-500 text-sm">
+            👆 Selecione um mês/ano acima para consultar os dados de absenteísmo
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (data.length === 0 && hasSearched) {
+    return (
+      <div>
+        {renderMonthSelector()}
+        <div className="bg-white rounded-lg shadow p-6 text-center">
+          <p className="text-gray-500 text-sm">
+            📊 Nenhum dado de absenteísmo encontrado para o período selecionado
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      {/* Controles de paginação no topo */}
+    <div>
+      {renderMonthSelector()}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        {/* Controles de paginação no topo */}
       <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center bg-gray-50">
         <div className="flex items-center text-xs text-gray-700">
           <span className="mr-1">Mostrar</span>
@@ -230,6 +326,7 @@ export default function Absenteismo({ onLoadingChange }: AbsenteismoProps) {
             Próxima ›
           </button>
         </div>
+      </div>
       </div>
     </div>
   );
