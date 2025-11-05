@@ -1,19 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import TotalChamadasAtendidasPassouFila from '../../components/reports/total_chamadas_atendidas_passou_fila';
 
-type ReportType = 'consolidado' | 'tempo_medio_atendimento_por_grupo' | 'total_chamadas_atendidas_passou_fila' | 'chamadas_atendidas_menos_1_minuto' | 'chamadas_abandonadas_fila_menos_1_minuto' | 'absenteismo';
+type ReportType = '' | 'absenteismo' | 'chamadas_atendidas_menos_1_minuto' | 'chamadas_abandonadas_fila_menos_1_minuto' | 'chamadas_abandonadas_fila_mais_1_minuto' | 'consolidado' | 'tempo_medio_atendimento_por_grupo' | 'total_chamadas_atendidas_passou_fila' | 'total_repeticoes_chamadores';
 
 interface ReportData {
   [key: string]: any;
 }
 
 export default function Report() {
-  const [selectedReport, setSelectedReport] = useState<ReportType | ''>('');
+  const [selectedReport, setSelectedReport] = useState<ReportType>('');
   const [data, setData] = useState<ReportData[]>([]);
   const [loading, setLoading] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(''); // Para absenteísmo
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -35,9 +37,26 @@ export default function Report() {
     setSelectedReport(newReport);
     setData([]);
     setCurrentPage(1);
-    // Reset dates when changing reports
+    // Reset dates and month when changing reports
     setStartDate('');
     setEndDate('');
+    setSelectedMonth('');
+  };
+
+  // Função para obter o número de dias no mês
+  const getDaysInMonth = (year: number, month: number) => {
+    return new Date(year, month, 0).getDate();
+  };
+
+  // Função para converter mês/ano em datas de início e fim
+  const getDateRangeFromMonth = (monthYear: string) => {
+    const [year, month] = monthYear.split('-').map(Number);
+    const daysInMonth = getDaysInMonth(year, month);
+    
+    const startDate = `${year}-${month.toString().padStart(2, '0')}-01`;
+    const endDate = `${year}-${month.toString().padStart(2, '0')}-${daysInMonth.toString().padStart(2, '0')}`;
+    
+    return { startDate, endDate };
   };
 
   // Função para garantir formato de data correto independente do fuso horário
@@ -76,6 +95,9 @@ export default function Report() {
 
   const fetchReportData = async () => {
     if (!selectedReport || (!startDate && selectedReport !== 'absenteismo')) return;
+    
+    // Para absenteísmo, verificar se mês foi selecionado
+    if (selectedReport === 'absenteismo' && !selectedMonth) return;
 
     console.log(`🚀 [${selectedReport}] Iniciando busca de dados...`);
     
@@ -85,9 +107,11 @@ export default function Report() {
       let apiUrl;
       
       if (selectedReport === 'absenteismo') {
-        // Relatório de absenteísmo não precisa de filtros de data
-        apiUrl = `/api/reports/${selectedReport}`;
-        console.log(`🌐 [${selectedReport}] URL da requisição (sem filtros):`, apiUrl);
+        // Relatório de absenteísmo com filtro de mês/ano
+        const { startDate: monthStartDate, endDate: monthEndDate } = getDateRangeFromMonth(selectedMonth);
+        apiUrl = `/api/reports/${selectedReport}?startDate=${monthStartDate}&endDate=${monthEndDate}`;
+        console.log(`🌐 [${selectedReport}] URL da requisição (com filtro de mês):`, apiUrl);
+        console.log(`📅 [${selectedReport}] Período: ${monthStartDate} a ${monthEndDate}`);
       } else {
         // Outros relatórios precisam de filtros de data
         console.log(`🌏 [${selectedReport}] ATENÇÃO: Servidor na China (GMT+8) - enviando datas como strings para evitar conversão automática`);
@@ -100,12 +124,16 @@ export default function Report() {
         console.log(`📅 [${selectedReport}] Data final original:`, endDate || 'não definida', '→ formatada:', formattedEndDate || 'não definida');
         
         const params = new URLSearchParams({
-          startDate: formattedStartDate,
-          sortOrder
+          startDate: formattedStartDate
         });
         
-        if (formattedEndDate) {
+        if (selectedReport !== 'total_chamadas_atendidas_passou_fila' && formattedEndDate) {
           params.append('endDate', formattedEndDate);
+        }
+        
+        // Adicionar sortOrder apenas para relatórios que precisam
+        if (selectedReport !== 'total_chamadas_atendidas_passou_fila') {
+          params.append('sortOrder', sortOrder);
         }
 
         apiUrl = `/api/reports/${selectedReport}?${params}`;
@@ -139,10 +167,15 @@ export default function Report() {
   };
 
   useEffect(() => {
-    if (selectedReport && (startDate || selectedReport === 'absenteismo')) {
+    if (selectedReport === 'absenteismo' && selectedMonth) {
+      fetchReportData();
+    } else if (selectedReport === 'total_chamadas_atendidas_passou_fila' && selectedReport && startDate) {
+      // Para o relatório de filas, busca automaticamente quando tem data inicial
+      fetchReportData();
+    } else if (selectedReport !== 'absenteismo' && selectedReport !== 'total_chamadas_atendidas_passou_fila' && selectedReport && startDate) {
       fetchReportData();
     }
-  }, [selectedReport, startDate, endDate, sortOrder]);
+  }, [selectedReport, startDate, endDate, selectedMonth, sortOrder]);
 
   const formatValue = (value: any, columnName: string) => {
     // Formatação específica baseada no nome da coluna
@@ -237,8 +270,79 @@ export default function Report() {
               </h2>
             </div>
             
-            {/* Ocultar filtros para relatório de absenteísmo */}
-            {selectedReport !== 'absenteismo' && (
+            {/* Filtros específicos para absenteísmo */}
+            {selectedReport === 'absenteismo' && (
+              <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+                <div className="flex items-center gap-6 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-bold text-green-700 whitespace-nowrap">
+                      📅 Mês/Ano:
+                    </label>
+                    <div className="flex gap-1">
+                      <select
+                        value={selectedMonth ? selectedMonth.split('-')[1] : ''}
+                        onChange={(e) => {
+                          const month = e.target.value;
+                          const year = selectedMonth ? selectedMonth.split('-')[0] : new Date().getFullYear().toString();
+                          if (month) {
+                            setSelectedMonth(`${year}-${month.padStart(2, '0')}`);
+                          }
+                        }}
+                        className="border border-green-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      >
+                        <option value="">Mês</option>
+                        <option value="01">Janeiro</option>
+                        <option value="02">Fevereiro</option>
+                        <option value="03">Março</option>
+                        <option value="04">Abril</option>
+                        <option value="05">Maio</option>
+                        <option value="06">Junho</option>
+                        <option value="07">Julho</option>
+                        <option value="08">Agosto</option>
+                        <option value="09">Setembro</option>
+                        <option value="10">Outubro</option>
+                        <option value="11">Novembro</option>
+                        <option value="12">Dezembro</option>
+                      </select>
+                      <input
+                        type="number"
+                        value={selectedMonth ? selectedMonth.split('-')[0] : ''}
+                        onChange={(e) => {
+                          const year = e.target.value;
+                          const month = selectedMonth ? selectedMonth.split('-')[1] : '';
+                          if (year && month) {
+                            setSelectedMonth(`${year}-${month.padStart(2, '0')}`);
+                          }
+                        }}
+                        min="2020"
+                        max="2030"
+                        placeholder="Ano"
+                        className="w-20 border border-green-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      />
+                    </div>
+                  </div>
+                  
+                  {selectedMonth && (
+                    <div className="text-sm text-green-700 bg-green-100 px-3 py-1 rounded-full">
+                      <span className="font-medium">Período:</span> {
+                        (() => {
+                          const { startDate, endDate } = getDateRangeFromMonth(selectedMonth);
+                          // Criar datas diretamente no fuso local para evitar problemas de timezone
+                          const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+                          const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+                          const localStartDate = new Date(startYear, startMonth - 1, startDay);
+                          const localEndDate = new Date(endYear, endMonth - 1, endDay);
+                          return `${localStartDate.toLocaleDateString('pt-BR')} a ${localEndDate.toLocaleDateString('pt-BR')}`;
+                        })()
+                      }
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Filtros para outros relatórios */}
+            {selectedReport && selectedReport !== 'absenteismo' && (
               <div className="bg-gray-50 rounded-lg p-4 border">
                 <div className="flex items-center gap-6 flex-wrap">
                   <div className="flex items-center gap-2">
@@ -327,19 +431,22 @@ export default function Report() {
                     </div>
                   </div>
                 
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm font-bold text-gray-700 whitespace-nowrap">
-                      Ordem:
-                    </label>
-                    <select
-                      value={sortOrder}
-                      onChange={(e) => setSortOrder(e.target.value as 'ASC' | 'DESC')}
-                      className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="DESC">⬇️ Desc</option>
-                      <option value="ASC">⬆️ Asc</option>
-                    </select>
-                  </div>
+                  {/* Filtro de ordenação - não aplicável para o relatório de filas conectadas */}
+                  {selectedReport !== 'total_chamadas_atendidas_passou_fila' && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-bold text-gray-700 whitespace-nowrap">
+                        Ordem:
+                      </label>
+                      <select
+                        value={sortOrder}
+                        onChange={(e) => setSortOrder(e.target.value as 'ASC' | 'DESC')}
+                        className="w-24 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="DESC">⬇️ Desc</option>
+                        <option value="ASC">⬆️ Asc</option>
+                      </select>
+                    </div>
+                  )}
 
                   <div>
                     <button
@@ -380,11 +487,20 @@ export default function Report() {
         </div>
       )}
 
-      {/* Tabela de dados */}
+      {/* Renderização dos dados */}
       {!loading && data.length > 0 && (
+        <>
+          {/* Componente específico para relatório de filas conectadas */}
+          {selectedReport === 'total_chamadas_atendidas_passou_fila' ? (
+            <TotalChamadasAtendidasPassouFila 
+              data={data} 
+              loading={loading}
+            />
+          ) : (
+            /* Tabela genérica para outros relatórios */
         <div className="bg-white rounded-lg shadow overflow-hidden">
           {/* Controles de paginação no topo */}
-          <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+            <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center bg-gray-50">
             <div className="flex items-center text-xs text-gray-700">
               <span className="mr-1">Mostrar</span>
               <select
@@ -425,41 +541,58 @@ export default function Report() {
               </button>
             </div>
           </div>
+
+          {/* Este header não é mais necessário pois usamos o componente específico */}
+          {false && (
+            <div className="px-4 py-3 border-b-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-800">
+                  <span className="font-semibold text-blue-800">📊 Total de registros: </span>
+                  <span className="font-bold text-blue-900 bg-blue-100 px-2 py-1 rounded-full text-xs">
+                    {data.length}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-600 bg-white px-2 py-1 rounded-full border border-gray-200">
+                  📞 Filas Conectadas
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Tabela */}
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 table-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  {columns.map((column) => (
-                    <th
-                      key={column}
-                      className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    >
-                      {formatColumnName(column)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-100">
-                {currentData.map((row, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 table-sm">
+                <thead className="bg-gray-50">
+                  <tr>
                     {columns.map((column) => (
-                      <td
+                      <th
                         key={column}
-                        className="px-2 py-1.5 whitespace-nowrap text-xs text-gray-900"
+                        className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                       >
-                        {formatValue(row[column], column)}
-                      </td>
+                        {formatColumnName(column)}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100">
+                  {currentData.map((row, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      {columns.map((column) => (
+                        <td
+                          key={column}
+                          className="px-2 py-1.5 whitespace-nowrap text-xs text-gray-900"
+                        >
+                          {formatValue(row[column], column)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
           {/* Controles de paginação no final */}
-          <div className="px-3 py-2 border-t border-gray-200 flex justify-between items-center bg-gray-50">
+            <div className="px-3 py-2 border-t border-gray-200 flex justify-between items-center bg-gray-50">
             <div className="flex items-center text-xs text-gray-700">
               <span className="mr-1">Mostrar</span>
               <select
@@ -500,14 +633,25 @@ export default function Report() {
               </button>
             </div>
           </div>
-        </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Mensagem quando não há dados */}
       {!loading && data.length === 0 && selectedReport && (
         <div className="bg-white rounded-lg shadow p-6 text-center">
           <p className="text-gray-500 text-sm">
-            Nenhum dado encontrado para o período selecionado
+            {selectedReport === 'absenteismo' && !selectedMonth
+              ? '👆 Selecione um mês/ano acima para consultar os dados de absenteísmo'
+              : selectedReport === 'total_chamadas_atendidas_passou_fila' && !startDate
+              ? '📅 Selecione uma data no campo "De" para consultar. Use o campo "Até" para definir um período específico.'
+              : selectedReport === 'absenteismo'
+              ? '📊 Nenhum dado de absenteísmo encontrado para o período selecionado'
+              : selectedReport === 'total_chamadas_atendidas_passou_fila'
+              ? '📊 Nenhum dado encontrado para o período selecionado'
+              : 'Nenhum dado encontrado para o período selecionado'
+            }
           </p>
         </div>
       )}

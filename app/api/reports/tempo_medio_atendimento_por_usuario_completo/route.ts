@@ -14,26 +14,22 @@ export async function GET(request: Request) {
   
   const { searchParams } = new URL(request.url);
   const ramal = searchParams.get('ramal');
-  const startDate = searchParams.get('startDate');
-  const endDate = searchParams.get('endDate');
   
   console.log('📋 [Reports/TempoMedioUsuarioCompleto] Parâmetros recebidos:');
   console.log('  📞 Ramal:', ramal);
-  console.log('  📅 Data inicial:', startDate);
-  console.log('  📅 Data final:', endDate);
 
-  if (!ramal || !startDate || !endDate) {
-    console.error('❌ [Reports/TempoMedioUsuarioCompleto] Parâmetros obrigatórios ausentes');
+  if (!ramal) {
+    console.error('❌ [Reports/TempoMedioUsuarioCompleto] Parâmetro obrigatório ausente');
     return NextResponse.json(
       { 
         success: false,
-        error: 'Parâmetros obrigatórios: ramal, startDate, endDate' 
+        error: 'Parâmetro obrigatório: ramal' 
       },
       { status: 400 }
     );
   }
 
-  console.log('📅 [Reports/TempoMedioUsuarioCompleto] Usando datas fornecidas:', startDate, 'até', endDate);
+  console.log('📅 [Reports/TempoMedioUsuarioCompleto] Procedure irá usar data atual automaticamente');
 
   let conn;
   try {
@@ -42,18 +38,18 @@ export async function GET(request: Request) {
     console.log('✅ [Reports/TempoMedioUsuarioCompleto] Conexão obtida com sucesso');
     
     const procedureName = 'sp_tempo_medio_atendimento_por_usuario_completo';
-    const procedureParams = [parseInt(ramal), startDate, endDate];
+    const procedureParams = [parseInt(ramal)];
     
     console.log('🔧 [Reports/TempoMedioUsuarioCompleto] Preparando chamada da procedure:');
     console.log('  📞 Procedure:', procedureName);
     console.log('  📝 Parâmetros:', procedureParams);
-    console.log('🌏 [Reports/TempoMedioUsuarioCompleto] ATENÇÃO: Servidor na China - datas passadas diretamente sem conversão de fuso');
+    console.log('📅 [Reports/TempoMedioUsuarioCompleto] Procedure usará data atual automaticamente');
 
     console.log('⚡ [Reports/TempoMedioUsuarioCompleto] Executando procedure...');
     const startTime = Date.now();
     
     const rows = await conn.query(
-      `CALL ${procedureName}(?, ?, ?)`,
+      `CALL ${procedureName}(?)`,
       procedureParams
     );
     
@@ -108,11 +104,9 @@ export async function GET(request: Request) {
       return NextResponse.json({
         success: true,
         data: [],
-        message: 'Nenhum dado encontrado para o período especificado',
+        message: 'Nenhum dado encontrado',
         params: {
-          ramal,
-          startDate,
-          endDate
+          ramal
         },
         executionTime
       });
@@ -124,9 +118,7 @@ export async function GET(request: Request) {
       data,
       totalRecords: data.length,
       params: {
-        ramal,
-        startDate,
-        endDate
+        ramal
       },
       executionTime
     });
@@ -153,9 +145,7 @@ export async function GET(request: Request) {
         error: 'Erro ao executar relatório de tempo médio por usuário completo',
         details: error instanceof Error ? error.message : 'Erro desconhecido',
         params: {
-          ramal,
-          startDate,
-          endDate
+          ramal
         }
       },
       { status: 500 }

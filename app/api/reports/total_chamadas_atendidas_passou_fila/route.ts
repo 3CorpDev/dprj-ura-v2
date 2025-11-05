@@ -14,19 +14,17 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const startDate = searchParams.get('startDate');
   const endDate = searchParams.get('endDate');
-  const sortOrder = searchParams.get('sortOrder') || 'DESC';
 
   console.log('🚀 [total_chamadas_atendidas_passou_fila] Iniciando requisição...');
   console.log('🌏 [total_chamadas_atendidas_passou_fila] Servidor na China - processando datas sem conversão automática');
   console.log('📅 [total_chamadas_atendidas_passou_fila] Data inicial recebida:', startDate);
   console.log('📅 [total_chamadas_atendidas_passou_fila] Data final recebida:', endDate);
-  console.log('🔄 [total_chamadas_atendidas_passou_fila] Ordenação:', sortOrder);
 
   if (!startDate) {
-    console.log('❌ [total_chamadas_atendidas_passou_fila] Data inicial é obrigatória');
+    console.log('❌ [total_chamadas_atendidas_passou_fila] Data inicial e final são obrigatórias');
     return NextResponse.json({ 
       success: false, 
-      error: 'Data inicial é obrigatória' 
+      error: 'Data inicial e final são obrigatórias' 
     }, { status: 400 });
   }
 
@@ -40,24 +38,37 @@ export async function GET(request: NextRequest) {
     // Formatar as datas para incluir horário - CORREÇÃO FUSO HORÁRIO CHINA
     // Força as datas a serem interpretadas como horário local (Brasil) evitando conversão automática do servidor
     const startDateTime = `${startDate} 00:00:00`;
-    const endDateTime = endDate ? `${endDate} 23:59:59` : `${startDate} 23:59:59`;
+    const endDateTime = endDate ? `${endDate} 23:59:59` : undefined;
 
-    console.log('🔍 [total_chamadas_atendidas_passou_fila] Executando procedure sp_consulta_fila...');
-    console.log('📊 [total_chamadas_atendidas_passou_fila] Campos retornados: data, nome_fila, agente, telefone');
+    console.log('🔍 [total_chamadas_atendidas_passou_fila] Executando procedure sp_relatorio_filas_conectadas_total...');
+    console.log('📊 [total_chamadas_atendidas_passou_fila] Campos retornados: fila, data_inicial, data_final, quantidade');
     console.log('⏰ [total_chamadas_atendidas_passou_fila] Data/hora inicial:', startDateTime);
     console.log('⏰ [total_chamadas_atendidas_passou_fila] Data/hora final:', endDateTime);
     console.log('🌏 [total_chamadas_atendidas_passou_fila] ATENÇÃO: Servidor na China - datas forçadas para horário local');
 
     // Executar a procedure
     const rows = await connection.query(
-      'CALL sp_consulta_fila(?, ?, ?)',
-      [startDateTime, endDateTime, sortOrder]
+      'CALL sp_relatorio_filas_conectadas_total(?, ?)',
+      [startDateTime, endDateTime]
     );
 
     console.log('📊 [total_chamadas_atendidas_passou_fila] Resultado da procedure:', rows);
 
     // A procedure retorna um array de arrays, precisamos pegar o primeiro
-    const data = Array.isArray(rows) && rows.length > 0 && Array.isArray(rows[0]) ? rows[0] : [];
+    const rawData = Array.isArray(rows) && rows.length > 0 && Array.isArray(rows[0]) ? rows[0] : [];
+    
+    // Converter BigInt para Number para evitar erro de serialização JSON
+    const data = rawData.map((row: any) => {
+      const convertedRow: any = {};
+      for (const [key, value] of Object.entries(row)) {
+        if (typeof value === 'bigint') {
+          convertedRow[key] = Number(value);
+        } else {
+          convertedRow[key] = value;
+        }
+      }
+      return convertedRow;
+    });
     
     console.log('✅ [total_chamadas_atendidas_passou_fila] Dados processados:', Array.isArray(data) ? data.length : 0, 'registros');
     console.log('🔍 [total_chamadas_atendidas_passou_fila] Primeiros registros:', Array.isArray(data) ? data.slice(0, 3) : []);

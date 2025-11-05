@@ -10,12 +10,17 @@ const pool = mariadb.createPool({
 });
 
 export async function GET(request: Request) {
+  const startTime = Date.now();
   console.log('🚀 [Reports/Absenteísmo] Iniciando consulta de absenteísmo...');
   
   const { searchParams } = new URL(request.url);
+  const startDate = searchParams.get('startDate');
+  const endDate = searchParams.get('endDate');
   const sortOrder = searchParams.get('sortOrder') || 'ASC';
   
   console.log('📋 [Reports/Absenteísmo] Parâmetros recebidos:');
+  console.log('  📅 Data inicial:', startDate);
+  console.log('  📅 Data final:', endDate);
   console.log('  🔄 Ordenação:', sortOrder);
 
   let conn;
@@ -25,8 +30,9 @@ export async function GET(request: Request) {
     console.log('✅ [Reports/Absenteísmo] Conexão obtida com sucesso');
 
     console.log('🔧 [Reports/Absenteísmo] Executando query direta no banco de dados...');
-    const startTime = Date.now();
-    const query = `
+    
+    // Construir query com filtros de data se fornecidos
+    let query = `
       SELECT 
         nome_agente,
         ramal,
@@ -36,14 +42,36 @@ export async function GET(request: Request) {
         dias_30_dias,
         DATE_FORMAT(ultimo_dia_ativo, "%Y-%m-%d") as ultimo_dia_ativo
       FROM asterisk.vAbsenteismo
-      ORDER BY nome_agente ${sortOrder}
     `;
     
+    const queryParams = [];
+    
+    // Adicionar filtros de data se fornecidos
+    if (startDate || endDate) {
+      query += ' WHERE ';
+      const conditions = [];
+      
+      if (startDate) {
+        conditions.push('ultimo_dia_ativo >= ?');
+        queryParams.push(startDate);
+      }
+      
+      if (endDate) {
+        conditions.push('ultimo_dia_ativo <= ?');
+        queryParams.push(endDate);
+      }
+      
+      query += conditions.join(' AND ');
+    }
+    
+    query += ` ORDER BY nome_agente ${sortOrder}`;
+    
     console.log('📝 [Reports/Absenteísmo] Query SQL:', query);
+    console.log('📝 [Reports/Absenteísmo] Parâmetros:', queryParams);
     console.log('🌏 [Reports/Absenteísmo] ATENÇÃO: Servidor na China - sem conversão de fuso');
 
     console.log('⚡ [Reports/Absenteísmo] Executando query...');
-    const rows = await conn.query(query);
+    const rows = await conn.query(query, queryParams);
     
     const executionTime = Date.now() - startTime;
     console.log(`⏱️ [Reports/Absenteísmo] Query executada em ${executionTime}ms`);
@@ -76,8 +104,8 @@ export async function GET(request: Request) {
       return NextResponse.json({
         success: true,
         data: [],
-        message: 'Nenhum dado encontrado para absenteísmo',
-        params: { sortOrder },
+        message: 'Nenhum dado encontrado para o período especificado',
+        params: { startDate, endDate, sortOrder },
         executionTime
       });
     }
@@ -87,7 +115,7 @@ export async function GET(request: Request) {
       success: true,
       data,
       totalRecords: data.length,
-      params: { sortOrder },
+      params: { startDate, endDate, sortOrder },
       executionTime
     });
 
@@ -107,12 +135,14 @@ export async function GET(request: Request) {
       console.error('  📄 SQL Message:', (error as any).sqlMessage);
     }
     
+    const executionTime = Date.now() - startTime;
     return NextResponse.json(
       { 
         success: false, 
         error: 'Erro ao executar relatório de absenteísmo',
         details: error instanceof Error ? error.message : 'Erro desconhecido',
-        params: { sortOrder }
+        params: { startDate, endDate, sortOrder },
+        executionTime
       },
       { status: 500 }
     );
