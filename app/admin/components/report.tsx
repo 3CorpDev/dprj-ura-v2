@@ -22,6 +22,7 @@ export default function Report() {
   const [chamadorFilter, setChamadorFilter] = useState(''); // Para filtro de chamador
   const [sortColumn, setSortColumn] = useState<string>(''); // Para ordenação por coluna
   const [sortDirection, setSortDirection] = useState<'ASC' | 'DESC'>('DESC'); // Direção da ordenação
+  const [agenteFilter, setAgenteFilter] = useState(''); // Para filtro de agente no absenteísmo
 
   const reportOptions = [
     { value: '', label: 'Selecione um relatório' },
@@ -47,6 +48,7 @@ export default function Report() {
     setChamadorFilter('');
     setSortColumn('');
     setSortDirection('DESC');
+    setAgenteFilter('');
   };
 
   // Função para obter o número de dias no mês
@@ -186,7 +188,7 @@ export default function Report() {
     } else if (selectedReport !== 'absenteismo' && selectedReport !== 'total_chamadas_atendidas_passou_fila' && selectedReport && startDate) {
       fetchReportData();
     }
-  }, [selectedReport, startDate, endDate, selectedMonth, sortOrder, chamadorFilter]);
+  }, [selectedReport, startDate, endDate, selectedMonth, sortOrder, chamadorFilter, agenteFilter]);
 
   const formatValue = (value: any, columnName: string) => {
     // Formatação específica baseada no nome da coluna
@@ -265,7 +267,7 @@ export default function Report() {
     setCurrentPage(1); // Reset para primeira página
   };
 
-  // Função para filtrar e ordenar dados (específico para total_repeticoes_chamadores)
+  // Função para filtrar e ordenar dados (específico para total_repeticoes_chamadores e absenteismo)
   const getFilteredAndSortedData = () => {
     let filteredData = [...data];
     
@@ -279,6 +281,23 @@ export default function Report() {
               key.toLowerCase().includes('src') || 
               key.toLowerCase().includes('numero') ||
               key.toLowerCase().includes('telefone')) {
+            return String(value).toLowerCase().includes(filterText);
+          }
+          return false;
+        });
+      });
+    }
+    
+    // Aplicar filtro de agente apenas para o relatório de absenteísmo
+    if (selectedReport === 'absenteismo' && agenteFilter.trim()) {
+      const filterText = agenteFilter.toLowerCase().trim();
+      filteredData = filteredData.filter(row => {
+        // Procura em todas as colunas que podem conter informação do agente
+        return Object.entries(row).some(([key, value]) => {
+          if (key.toLowerCase().includes('agente') || 
+              key.toLowerCase().includes('nome') || 
+              key.toLowerCase().includes('usuario') ||
+              key.toLowerCase().includes('funcionario')) {
             return String(value).toLowerCase().includes(filterText);
           }
           return false;
@@ -313,7 +332,7 @@ export default function Report() {
   };
 
   // Paginação
-  const filteredData = selectedReport === 'total_repeticoes_chamadores' ? getFilteredAndSortedData() : data;
+  const filteredData = (selectedReport === 'total_repeticoes_chamadores' || selectedReport === 'absenteismo') ? getFilteredAndSortedData() : data;
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
@@ -414,6 +433,35 @@ export default function Report() {
                       }
                     </div>
                   )}
+                  
+                  {/* Filtro de agente para absenteísmo */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-bold text-green-700 whitespace-nowrap">
+                      🔍 Filtrar Agente:
+                    </label>
+                    <input
+                      type="text"
+                      value={agenteFilter}
+                      onChange={(e) => {
+                        setAgenteFilter(e.target.value);
+                        setCurrentPage(1); // Reset para primeira página ao filtrar
+                      }}
+                      placeholder="Digite o nome..."
+                      className="w-40 border border-green-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                    {agenteFilter && (
+                      <button
+                        onClick={() => {
+                          setAgenteFilter('');
+                          setCurrentPage(1);
+                        }}
+                        className="text-green-400 hover:text-green-600"
+                        title="Limpar filtro"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -628,6 +676,27 @@ export default function Report() {
                 </div>
                 <div className="text-xs text-blue-600">
                   💡 Clique nos títulos das colunas para ordenar
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Informações específicas para o relatório de absenteísmo */}
+          {selectedReport === 'absenteismo' && (
+            <div className="px-4 py-2 bg-green-50 border-b border-green-200">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-4">
+                  <span className="text-green-800">
+                    📊 Total: <strong>{data.length}</strong> registros
+                  </span>
+                  {agenteFilter && (
+                    <span className="text-green-700">
+                      🔍 Filtrados: <strong>{filteredData.length}</strong> registros
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-green-600">
+                  📅 Relatório de Absenteísmo por Agente
                 </div>
               </div>
             </div>
