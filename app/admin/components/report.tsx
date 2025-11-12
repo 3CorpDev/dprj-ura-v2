@@ -19,6 +19,10 @@ export default function Report() {
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [chamadorFilter, setChamadorFilter] = useState(''); // Para filtro de chamador
+  const [sortColumn, setSortColumn] = useState<string>(''); // Para ordenação por coluna
+  const [sortDirection, setSortDirection] = useState<'ASC' | 'DESC'>('DESC'); // Direção da ordenação
+  const [agenteFilter, setAgenteFilter] = useState(''); // Para filtro de agente no absenteísmo
 
   const reportOptions = [
     { value: '', label: 'Selecione um relatório' },
@@ -41,6 +45,10 @@ export default function Report() {
     setStartDate('');
     setEndDate('');
     setSelectedMonth('');
+    setChamadorFilter('');
+    setSortColumn('');
+    setSortDirection('DESC');
+    setAgenteFilter('');
   };
 
   // Função para obter o número de dias no mês
@@ -131,9 +139,14 @@ export default function Report() {
           params.append('endDate', formattedEndDate);
         }
         
-        // Adicionar sortOrder apenas para relatórios que precisam
-        if (selectedReport !== 'total_chamadas_atendidas_passou_fila') {
+        // Adicionar sortOrder apenas para relatórios que precisam (exceto total_repeticoes_chamadores que usa ordenação local)
+        if (selectedReport !== 'total_chamadas_atendidas_passou_fila' && selectedReport !== 'total_repeticoes_chamadores') {
           params.append('sortOrder', sortOrder);
+        }
+        
+        // Adicionar filtro de chamador para o relatório de repetições
+        if (selectedReport === 'total_repeticoes_chamadores' && chamadorFilter.trim()) {
+          params.append('chamadorFilter', chamadorFilter.trim());
         }
 
         apiUrl = `/api/reports/${selectedReport}?${params}`;
@@ -175,7 +188,7 @@ export default function Report() {
     } else if (selectedReport !== 'absenteismo' && selectedReport !== 'total_chamadas_atendidas_passou_fila' && selectedReport && startDate) {
       fetchReportData();
     }
-  }, [selectedReport, startDate, endDate, selectedMonth, sortOrder]);
+  }, [selectedReport, startDate, endDate, selectedMonth, sortOrder, chamadorFilter, agenteFilter]);
 
   const formatValue = (value: any, columnName: string) => {
     // Formatação específica baseada no nome da coluna
@@ -197,7 +210,11 @@ export default function Report() {
       if (value.match(/^\d{4}-\d{2}-\d{2}/)) {
         try {
           const date = new Date(value);
-          // Se tem horário, mostra data e hora
+          // Para o relatório de repetições por chamador, sempre mostrar só a data
+          if (selectedReport === 'total_repeticoes_chamadores' || columnName.toLowerCase().includes('data')) {
+            return date.toLocaleDateString('pt-BR');
+          }
+          // Para outros relatórios, se tem horário, mostra data e hora
           if (value.includes('T') || value.includes(' ')) {
             return date.toLocaleString('pt-BR');
           }
@@ -236,11 +253,90 @@ export default function Report() {
     return Object.keys(data[0]);
   };
 
+  // Função para ordenar dados por coluna
+  const handleColumnSort = (column: string) => {
+    if (selectedReport !== 'total_repeticoes_chamadores') return;
+    
+    let newDirection: 'ASC' | 'DESC' = 'ASC';
+    if (sortColumn === column && sortDirection === 'ASC') {
+      newDirection = 'DESC';
+    }
+    
+    setSortColumn(column);
+    setSortDirection(newDirection);
+    setCurrentPage(1); // Reset para primeira página
+  };
+
+  // Função para filtrar e ordenar dados (específico para total_repeticoes_chamadores e absenteismo)
+  const getFilteredAndSortedData = () => {
+    let filteredData = [...data];
+    
+    // Aplicar filtro de chamador apenas para o relatório de repetições
+    if (selectedReport === 'total_repeticoes_chamadores' && chamadorFilter.trim()) {
+      const filterText = chamadorFilter.toLowerCase().trim();
+      filteredData = filteredData.filter(row => {
+        // Procura em todas as colunas que podem conter informação do chamador
+        return Object.entries(row).some(([key, value]) => {
+          if (key.toLowerCase().includes('chamador') || 
+              key.toLowerCase().includes('src') || 
+              key.toLowerCase().includes('numero') ||
+              key.toLowerCase().includes('telefone')) {
+            return String(value).toLowerCase().includes(filterText);
+          }
+          return false;
+        });
+      });
+    }
+    
+    // Aplicar filtro de agente apenas para o relatório de absenteísmo
+    if (selectedReport === 'absenteismo' && agenteFilter.trim()) {
+      const filterText = agenteFilter.toLowerCase().trim();
+      filteredData = filteredData.filter(row => {
+        // Procura em todas as colunas que podem conter informação do agente
+        return Object.entries(row).some(([key, value]) => {
+          if (key.toLowerCase().includes('agente') || 
+              key.toLowerCase().includes('nome') || 
+              key.toLowerCase().includes('usuario') ||
+              key.toLowerCase().includes('funcionario')) {
+            return String(value).toLowerCase().includes(filterText);
+          }
+          return false;
+        });
+      });
+    }
+    
+    // Aplicar ordenação apenas para o relatório de repetições
+    if (selectedReport === 'total_repeticoes_chamadores' && sortColumn) {
+      filteredData.sort((a, b) => {
+        const aValue = a[sortColumn];
+        const bValue = b[sortColumn];
+        
+        // Tratamento para números
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return sortDirection === 'ASC' ? aValue - bValue : bValue - aValue;
+        }
+        
+        // Tratamento para strings
+        const aStr = String(aValue || '').toLowerCase();
+        const bStr = String(bValue || '').toLowerCase();
+        
+        if (sortDirection === 'ASC') {
+          return aStr.localeCompare(bStr);
+        } else {
+          return bStr.localeCompare(aStr);
+        }
+      });
+    }
+    
+    return filteredData;
+  };
+
   // Paginação
-  const totalPages = Math.ceil(data.length / itemsPerPage);
+  const filteredData = (selectedReport === 'total_repeticoes_chamadores' || selectedReport === 'absenteismo') ? getFilteredAndSortedData() : data;
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const currentData = data.slice(startIndex, endIndex);
+  const currentData = filteredData.slice(startIndex, endIndex);
   const columns = getColumns();
 
   return (
@@ -337,6 +433,35 @@ export default function Report() {
                       }
                     </div>
                   )}
+                  
+                  {/* Filtro de agente para absenteísmo */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-bold text-green-700 whitespace-nowrap">
+                      🔍 Filtrar Agente:
+                    </label>
+                    <input
+                      type="text"
+                      value={agenteFilter}
+                      onChange={(e) => {
+                        setAgenteFilter(e.target.value);
+                        setCurrentPage(1); // Reset para primeira página ao filtrar
+                      }}
+                      placeholder="Digite o nome..."
+                      className="w-40 border border-green-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                    {agenteFilter && (
+                      <button
+                        onClick={() => {
+                          setAgenteFilter('');
+                          setCurrentPage(1);
+                        }}
+                        className="text-green-400 hover:text-green-600"
+                        title="Limpar filtro"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -431,8 +556,39 @@ export default function Report() {
                     </div>
                   </div>
                 
-                  {/* Filtro de ordenação - não aplicável para o relatório de filas conectadas */}
-                  {selectedReport !== 'total_chamadas_atendidas_passou_fila' && (
+                  {/* Filtro específico para total_repeticoes_chamadores */}
+                  {selectedReport === 'total_repeticoes_chamadores' && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-bold text-gray-700 whitespace-nowrap">
+                        🔍 Filtrar Chamador:
+                      </label>
+                      <input
+                        type="text"
+                        value={chamadorFilter}
+                        onChange={(e) => {
+                          setChamadorFilter(e.target.value);
+                          setCurrentPage(1); // Reset para primeira página ao filtrar
+                        }}
+                        placeholder="Digite o número..."
+                        className="w-40 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      {chamadorFilter && (
+                        <button
+                          onClick={() => {
+                            setChamadorFilter('');
+                            setCurrentPage(1);
+                          }}
+                          className="text-gray-400 hover:text-gray-600"
+                          title="Limpar filtro"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Filtro de ordenação - não aplicável para filas conectadas e repetições por chamador */}
+                  {selectedReport !== 'total_chamadas_atendidas_passou_fila' && selectedReport !== 'total_repeticoes_chamadores' && (
                     <div className="flex items-center gap-2">
                       <label className="text-sm font-bold text-gray-700 whitespace-nowrap">
                         Ordem:
@@ -499,6 +655,52 @@ export default function Report() {
           ) : (
             /* Tabela genérica para outros relatórios */
         <div className="bg-white rounded-lg shadow overflow-hidden">
+          {/* Informações específicas para o relatório de repetições */}
+          {selectedReport === 'total_repeticoes_chamadores' && (
+            <div className="px-4 py-2 bg-blue-50 border-b border-blue-200">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-4">
+                  <span className="text-blue-800">
+                    📊 Total: <strong>{data.length}</strong> registros
+                  </span>
+                  {chamadorFilter && (
+                    <span className="text-blue-700">
+                      🔍 Filtrados: <strong>{filteredData.length}</strong> registros
+                    </span>
+                  )}
+                  {sortColumn && (
+                    <span className="text-blue-600 text-xs">
+                      📈 Ordenado por: <strong>{formatColumnName(sortColumn)}</strong> ({sortDirection === 'ASC' ? 'Crescente' : 'Decrescente'})
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-blue-600">
+                  💡 Clique nos títulos das colunas para ordenar
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Informações específicas para o relatório de absenteísmo */}
+          {selectedReport === 'absenteismo' && (
+            <div className="px-4 py-2 bg-green-50 border-b border-green-200">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-4">
+                  <span className="text-green-800">
+                    📊 Total: <strong>{data.length}</strong> registros
+                  </span>
+                  {agenteFilter && (
+                    <span className="text-green-700">
+                      🔍 Filtrados: <strong>{filteredData.length}</strong> registros
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-green-600">
+                  📅 Relatório de Absenteísmo por Agente
+                </div>
+              </div>
+            </div>
+          )}
           {/* Controles de paginação no topo */}
             <div className="px-3 py-2 border-b border-gray-200 flex justify-between items-center bg-gray-50">
             <div className="flex items-center text-xs text-gray-700">
@@ -529,7 +731,7 @@ export default function Report() {
               </button>
               
               <span className="text-xs text-gray-700 px-2">
-                Página {currentPage} de {totalPages} ({data.length} registros)
+                Página {currentPage} de {totalPages} ({filteredData.length} registros)
               </span>
               
               <button
@@ -567,9 +769,24 @@ export default function Report() {
                     {columns.map((column) => (
                       <th
                         key={column}
-                        className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        className={`px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
+                          selectedReport === 'total_repeticoes_chamadores' ? 'cursor-pointer hover:bg-gray-100 select-none' : ''
+                        }`}
+                        onClick={() => selectedReport === 'total_repeticoes_chamadores' && handleColumnSort(column)}
+                        title={selectedReport === 'total_repeticoes_chamadores' ? 'Clique para ordenar' : ''}
                       >
-                        {formatColumnName(column)}
+                        <div className="flex items-center gap-1">
+                          {formatColumnName(column)}
+                          {selectedReport === 'total_repeticoes_chamadores' && (
+                            <span className="text-gray-400">
+                              {sortColumn === column ? (
+                                sortDirection === 'ASC' ? '▲' : '▼'
+                              ) : (
+                                '⇕'
+                              )}
+                            </span>
+                          )}
+                        </div>
                       </th>
                     ))}
                   </tr>
@@ -621,7 +838,7 @@ export default function Report() {
               </button>
               
               <span className="text-xs text-gray-700 px-2">
-                Página {currentPage} de {totalPages} ({data.length} registros)
+                Página {currentPage} de {totalPages} ({filteredData.length} registros)
               </span>
               
               <button
