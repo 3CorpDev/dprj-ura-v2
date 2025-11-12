@@ -45,26 +45,34 @@ export async function GET(request: Request) {
 
     console.log('🔧 [Reports/TotalRepeticoesChamadores] Executando query direta no banco de dados...');
     const startTime = Date.now();
+    
     // Construir a query SQL com filtros de data
     let query = `
-      SELECT 
-        calldate as Data,
-        chamador as Origem,
-        total_chamadas as Repetições,
-        classificacao as Classificação
-      FROM asterisk.vTotalRepeticoesChamadores
-      WHERE calldate >= ?
+      SELECT
+        DATE(calldate) AS data,
+        source AS chamador,
+        COUNT(*) AS chamadas,
+        CASE
+          WHEN COUNT(*) >= 5 THEN '5x ou mais'
+          WHEN COUNT(*) = 4 THEN '4x'
+          WHEN COUNT(*) = 3 THEN '3x'
+          WHEN COUNT(*) = 2 THEN '2x'
+          ELSE '1x'
+        END AS classificacao
+      FROM vCdrGroupData
+      WHERE DATE(calldate) >= ?
     `;
     
+    // Para startDate, usar apenas a data (sem hora)
     const queryParams = [startDate];
     
     // Se tiver data final, adiciona condição
-    if (endDate) {
-      query += ' AND created <= ?';
-      queryParams.push(endDate + ' 23:59:59');
+    if (endDate && endDate !== startDate) {
+      query += ' AND DATE(calldate) <= ?';
+      queryParams.push(endDate);
     }
     
-    query += ` ORDER BY calldate ${sortOrder}`;
+    query += ` GROUP BY DATE(calldate), source ORDER BY DATE(calldate) ${sortOrder}, source`;
     
     console.log('📝 [Reports/TotalRepeticoesChamadores] Query SQL:', query);
     console.log('📝 [Reports/TotalRepeticoesChamadores] Parâmetros:', queryParams);
